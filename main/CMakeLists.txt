@@ -37,7 +37,6 @@ set(SOURCES "audio/audio_codec.cc"
             "application.cc"
             "ota.cc"
             "settings.cc"
-            "lunar_calendar.cc"
             "device_state_machine.cc"
             "assets.cc"
             "main.cc"
@@ -1071,6 +1070,7 @@ idf_component_register(SRCS ${SOURCES}
                         bt
                         fatfs
                         xiaozhi-fonts
+                        box2_custom
                         ${MAIN_PRIV_REQUIRES_EXTRA}
                     )
 

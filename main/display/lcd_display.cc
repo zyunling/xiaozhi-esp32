@@ -18,7 +18,7 @@
 #include <vector>
 
 #include "board.h"
-#include "lunar_calendar.h"
+#include "box2_custom.h"
 
 #define TAG "LcdDisplay"
 
@@ -307,27 +307,7 @@ LcdDisplay::~LcdDisplay() {
     }
 
 #if CONFIG_USE_CLOCK_STANDBY_SCREEN
-    // Clean up standby dim timer
-    if (standby_dim_timer_ != nullptr) {
-        esp_timer_stop(standby_dim_timer_);
-        esp_timer_delete(standby_dim_timer_);
-        standby_dim_timer_ = nullptr;
-    }
-    // Clean up clock standby screen objects
-    if (clock_screen_ != nullptr) {
-        lv_obj_del(clock_screen_);
-        clock_screen_ = nullptr;
-    }
-    clock_time_label_ = nullptr;
-    clock_seconds_label_ = nullptr;
-    clock_weekday_label_ = nullptr;
-    clock_date_label_ = nullptr;
-    clock_lunar_label_ = nullptr;
-    clock_battery_label_ = nullptr;
-    clock_battery_percent_ = nullptr;
-    clock_wifi_label_ = nullptr;
-    clock_volume_label_ = nullptr;
-    clock_status_label_ = nullptr;
+    box2_clock_destroy();
 #endif
 
     if (preview_image_ != nullptr) {
@@ -530,8 +510,7 @@ void LcdDisplay::SetupUI() {
     lv_label_set_text(emoji_label_, MATERIAL_SYMBOLS_ROBOT_2);
 
 #if CONFIG_USE_CLOCK_STANDBY_SCREEN
-    // Initialize clock standby screen but keep it hidden initially
-    SetupClockStandbyScreen();
+    box2_clock_setup(lv_screen_active(), this, 50, 10);
 #endif
 }
 #if CONFIG_IDF_TARGET_ESP32P4
@@ -1047,8 +1026,7 @@ void LcdDisplay::SetupUI() {
     lv_obj_add_flag(low_battery_popup_, LV_OBJ_FLAG_HIDDEN);
 
 #if CONFIG_USE_CLOCK_STANDBY_SCREEN
-    // Initialize clock standby screen but keep it hidden initially
-    SetupClockStandbyScreen();
+    box2_clock_setup(lv_screen_active(), this, 50, 10);
 #endif
 }
 
@@ -1390,470 +1368,84 @@ void LcdDisplay::UpdateStatusBar(bool update_all) {
     // Always invoke parent so the original status bar (battery, wifi, mute, clock tick) runs
     LvglDisplay::UpdateStatusBar(update_all);
 #if CONFIG_USE_CLOCK_STANDBY_SCREEN
-    UpdateClockScreen(false);
+    // Feed current state data to clock screen
+    Board& board = Board::GetInstance();
+    int level = 0;
+    bool charging = false;
+    bool discharging = false;
+    board.GetBatteryLevel(level, charging, discharging);
+    box2_clock_set_battery(level, charging ? 1 : 0);
+    box2_clock_set_wifi_icon(board.GetNetworkStateIcon());
+
+    auto* codec = board.GetAudioCodec();
+    if (codec != nullptr) {
+        box2_clock_set_volume(codec->output_volume());
+    }
+
+    box2_clock_update(0);
 #endif
 }
 
 #if CONFIG_USE_CLOCK_STANDBY_SCREEN
-// ============================================================
-// Clock Standby Screen Implementation
-// ============================================================
-
-void LcdDisplay::SetupClockStandbyScreen() {
-    if (clock_screen_ != nullptr) {
-        ESP_LOGW(TAG, "SetupClockStandbyScreen() called multiple times");
-        return;
+static void ClockDimCallback(void* user_data) {
+    auto* display = static_cast<LcdDisplay*>(user_data);
+    if (display == nullptr) return;
+    Board& board = Board::GetInstance();
+    Backlight* backlight = board.GetBacklight();
+    if (backlight) {
+        backlight->SetBrightness(50);  // Standby brightness
     }
-
-    auto lvgl_theme = static_cast<LvglTheme*>(current_theme_);
-    auto text_font = lvgl_theme->text_font()->font();
-    auto icon_font = lvgl_theme->icon_font()->font();
-
-    auto screen = lv_screen_active();
-
-    // Create one-shot timer for delayed standby dimming
-    if (standby_dim_timer_ == nullptr) {
-        esp_timer_create_args_t dim_timer_args = {
-            .callback =
-                [](void* arg) {
-                    LcdDisplay* display = static_cast<LcdDisplay*>(arg);
-                    display->SetStandbyBrightness(display->standby_brightness_);
-                },
-            .arg = this,
-            .dispatch_method = ESP_TIMER_TASK,
-            .name = "standby_dim",
-            .skip_unhandled_events = true,
-        };
-        esp_timer_create(&dim_timer_args, &standby_dim_timer_);
-    }
-
-    // Dark background colors for clock screen
-    lv_color_t bg_color = lv_color_hex(0x000000);   // Pure black background
-    lv_color_t time_color = lv_color_hex(0x00E5FF);  // Cyan for time
-    lv_color_t sec_color = lv_color_hex(0xFF9800);   // Orange for seconds
-    lv_color_t weekday_color = lv_color_hex(0x81C784); // Green for weekday
-    lv_color_t date_color = lv_color_hex(0x90CAF9);   // Blue for date
-    lv_color_t lunar_color = lv_color_hex(0xCE93D8);  // Purple for lunar
-    lv_color_t wifi_color = lv_color_hex(0x66BB6A);    // Green for WiFi
-    lv_color_t vol_color = lv_color_hex(0x4FC3F7);     // Blue for volume
-    lv_color_t bat_color = lv_color_hex(0x66BB6A);     // Green for battery (charging)
-    lv_color_t status_color = lv_color_hex(0xEF5350);   // Red for status/muted
-
-    // Create full-screen overlay container for the clock
-    clock_screen_ = lv_obj_create(screen);
-    lv_obj_set_size(clock_screen_, LV_HOR_RES, LV_VER_RES);
-    lv_obj_set_style_radius(clock_screen_, 0, 0);
-    lv_obj_set_style_pad_all(clock_screen_, 0, 0);
-    lv_obj_set_style_border_width(clock_screen_, 0, 0);
-    lv_obj_set_style_bg_color(clock_screen_, bg_color, 0);
-    lv_obj_set_style_bg_opa(clock_screen_, LV_OPA_COVER, 0);
-    lv_obj_set_flex_flow(clock_screen_, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(clock_screen_, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER,
-                          LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_top(clock_screen_, lvgl_theme->spacing(4), 0);
-    lv_obj_set_style_pad_bottom(clock_screen_, lvgl_theme->spacing(4), 0);
-    lv_obj_set_scrollbar_mode(clock_screen_, LV_SCROLLBAR_MODE_OFF);
-    lv_obj_move_foreground(clock_screen_);
-
-    // ---- Top row: WiFi + Volume (left) | Battery (right) ----
-    lv_obj_t* top_row = lv_obj_create(clock_screen_);
-    lv_obj_set_size(top_row, LV_HOR_RES, LV_SIZE_CONTENT);
-    lv_obj_set_style_bg_opa(top_row, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(top_row, 0, 0);
-    lv_obj_set_style_pad_all(top_row, 0, 0);
-    lv_obj_set_style_pad_left(top_row, lvgl_theme->spacing(6), 0);
-    lv_obj_set_style_pad_right(top_row, lvgl_theme->spacing(6), 0);
-    lv_obj_set_flex_flow(top_row, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(top_row, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER,
-                          LV_FLEX_ALIGN_CENTER);
-
-    // Left group: WiFi + Volume
-    lv_obj_t* left_cont = lv_obj_create(top_row);
-    lv_obj_set_size(left_cont, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-    lv_obj_set_style_bg_opa(left_cont, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(left_cont, 0, 0);
-    lv_obj_set_style_pad_all(left_cont, 0, 0);
-    lv_obj_set_flex_flow(left_cont, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(left_cont, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER,
-                          LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_column(left_cont, lvgl_theme->spacing(4), 0);
-
-    // WiFi icon
-    clock_wifi_label_ = lv_label_create(left_cont);
-    lv_label_set_text(clock_wifi_label_, MATERIAL_SYMBOLS_WIFI_OFF);
-    lv_obj_set_style_text_font(clock_wifi_label_, icon_font, 0);
-    lv_obj_set_style_text_color(clock_wifi_label_, wifi_color, 0);
-
-    // Volume icon + value
-    clock_volume_label_ = lv_label_create(left_cont);
-    lv_label_set_text(clock_volume_label_, "");
-    lv_obj_set_style_text_font(clock_volume_label_, icon_font, 0);
-    lv_obj_set_style_text_color(clock_volume_label_, vol_color, 0);
-    lv_obj_set_style_margin_left(clock_volume_label_, lvgl_theme->spacing(4), 0);
-
-    // Right: Battery icon + percentage
-    lv_obj_t* bat_cont = lv_obj_create(top_row);
-    lv_obj_set_size(bat_cont, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-    lv_obj_set_style_bg_opa(bat_cont, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(bat_cont, 0, 0);
-    lv_obj_set_style_pad_all(bat_cont, 0, 0);
-    lv_obj_set_flex_flow(bat_cont, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(bat_cont, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_CENTER,
-                          LV_FLEX_ALIGN_CENTER);
-
-    clock_battery_label_ = lv_label_create(bat_cont);
-    lv_label_set_text(clock_battery_label_, MATERIAL_SYMBOLS_BATTERY_ANDROID_FRAME_FULL);
-    lv_obj_set_style_text_font(clock_battery_label_, icon_font, 0);
-    lv_obj_set_style_text_color(clock_battery_label_, bat_color, 0);
-
-    clock_battery_percent_ = lv_label_create(bat_cont);
-    lv_label_set_text(clock_battery_percent_, "100%");
-    lv_obj_set_style_text_font(clock_battery_percent_, text_font, 0);
-    lv_obj_set_style_text_color(clock_battery_percent_, bat_color, 0);
-    lv_obj_set_style_margin_left(clock_battery_percent_, lvgl_theme->spacing(2), 0);
-
-    // ---- Center block: Time row (HH:MM + SS) + weekday + date ----
-    lv_obj_t* center_block = lv_obj_create(clock_screen_);
-    lv_obj_set_size(center_block, LV_HOR_RES, LV_SIZE_CONTENT);
-    lv_obj_set_style_bg_opa(center_block, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(center_block, 0, 0);
-    lv_obj_set_style_pad_all(center_block, 0, 0);
-    lv_obj_set_flex_flow(center_block, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(center_block, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
-                          LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_row(center_block, lvgl_theme->spacing(2), 0);
-
-    // Time row: HH:MM (big) + SS (normal, aligned to bottom)
-    lv_obj_t* time_row = lv_obj_create(center_block);
-    lv_obj_set_size(time_row, LV_HOR_RES, LV_SIZE_CONTENT);
-    lv_obj_set_style_bg_opa(time_row, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(time_row, 0, 0);
-    lv_obj_set_style_pad_all(time_row, 0, 0);
-    lv_obj_set_flex_flow(time_row, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(time_row, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_END,
-                          LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_column(time_row, lvgl_theme->spacing(2), 0);
-
-    clock_time_label_ = lv_label_create(time_row);
-    lv_label_set_text(clock_time_label_, "--:--");
-    lv_obj_set_style_text_font(clock_time_label_, text_font, 0);
-    lv_obj_set_style_text_color(clock_time_label_, time_color, 0);
-    // Scale up the time for better visibility on landscape screen
-    lv_obj_set_style_transform_zoom(clock_time_label_, 384, 0); // 150%
-    lv_obj_set_style_transform_pivot_x(clock_time_label_, 50, 0);
-    lv_obj_set_style_transform_pivot_y(clock_time_label_, 100, 0);
-
-    clock_seconds_label_ = lv_label_create(time_row);
-    lv_label_set_text(clock_seconds_label_, "--");
-    lv_obj_set_style_text_font(clock_seconds_label_, text_font, 0);
-    lv_obj_set_style_text_color(clock_seconds_label_, sec_color, 0);
-
-    // Weekday
-    clock_weekday_label_ = lv_label_create(center_block);
-    lv_label_set_text(clock_weekday_label_, "");
-    lv_obj_set_style_text_font(clock_weekday_label_, text_font, 0);
-    lv_obj_set_style_text_color(clock_weekday_label_, weekday_color, 0);
-
-    // Date
-    clock_date_label_ = lv_label_create(center_block);
-    lv_label_set_text(clock_date_label_, "");
-    lv_obj_set_style_text_font(clock_date_label_, text_font, 0);
-    lv_obj_set_style_text_color(clock_date_label_, date_color, 0);
-
-    // ---- Bottom area: Lunar date + status ----
-    lv_obj_t* bottom_block = lv_obj_create(clock_screen_);
-    lv_obj_set_size(bottom_block, LV_HOR_RES, LV_SIZE_CONTENT);
-    lv_obj_set_style_bg_opa(bottom_block, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(bottom_block, 0, 0);
-    lv_obj_set_style_pad_all(bottom_block, 0, 0);
-    lv_obj_set_flex_flow(bottom_block, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(bottom_block, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
-                          LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_row(bottom_block, lvgl_theme->spacing(2), 0);
-
-    // Lunar date
-    clock_lunar_label_ = lv_label_create(bottom_block);
-    lv_label_set_text(clock_lunar_label_, "");
-    lv_obj_set_width(clock_lunar_label_, LV_HOR_RES * 0.9);
-    lv_obj_set_style_text_align(clock_lunar_label_, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_style_text_font(clock_lunar_label_, text_font, 0);
-    lv_obj_set_style_text_color(clock_lunar_label_, lunar_color, 0);
-
-    // Status (muted etc.)
-    clock_status_label_ = lv_label_create(bottom_block);
-    lv_label_set_text(clock_status_label_, "");
-    lv_obj_set_width(clock_status_label_, LV_HOR_RES * 0.9);
-    lv_obj_set_style_text_align(clock_status_label_, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_style_text_font(clock_status_label_, text_font, 0);
-    lv_obj_set_style_text_color(clock_status_label_, status_color, 0);
-
-    // Keep hidden until entering Idle state
-    lv_obj_add_flag(clock_screen_, LV_OBJ_FLAG_HIDDEN);
 }
 
 void LcdDisplay::ShowClockStandbyScreen() {
-    if (clock_screen_ == nullptr) {
-        return;
-    }
     DisplayLockGuard lock(this);
+    // Hide regular chat UI
+    if (container_ != nullptr) lv_obj_add_flag(container_, LV_OBJ_FLAG_HIDDEN);
+    if (status_bar_ != nullptr) lv_obj_add_flag(status_bar_, LV_OBJ_FLAG_HIDDEN);
+    if (top_bar_ != nullptr) lv_obj_add_flag(top_bar_, LV_OBJ_FLAG_HIDDEN);
+    if (emoji_label_ != nullptr) lv_obj_add_flag(emoji_label_, LV_OBJ_FLAG_HIDDEN);
+    if (emoji_image_ != nullptr) lv_obj_add_flag(emoji_image_, LV_OBJ_FLAG_HIDDEN);
+    if (emoji_box_ != nullptr) lv_obj_add_flag(emoji_box_, LV_OBJ_FLAG_HIDDEN);
+    if (preview_image_ != nullptr) lv_obj_add_flag(preview_image_, LV_OBJ_FLAG_HIDDEN);
+    if (low_battery_popup_ != nullptr) lv_obj_add_flag(low_battery_popup_, LV_OBJ_FLAG_HIDDEN);
 
-    // Hide chat UI elements
-    if (container_ != nullptr) {
-        lv_obj_add_flag(container_, LV_OBJ_FLAG_HIDDEN);
-    }
-    if (status_bar_ != nullptr) {
-        lv_obj_add_flag(status_bar_, LV_OBJ_FLAG_HIDDEN);
-    }
-    if (top_bar_ != nullptr) {
-        lv_obj_add_flag(top_bar_, LV_OBJ_FLAG_HIDDEN);
-    }
-    if (emoji_label_ != nullptr) {
-        lv_obj_add_flag(emoji_label_, LV_OBJ_FLAG_HIDDEN);
-    }
-    if (emoji_image_ != nullptr) {
-        lv_obj_add_flag(emoji_image_, LV_OBJ_FLAG_HIDDEN);
-    }
-    if (emoji_box_ != nullptr) {
-        lv_obj_add_flag(emoji_box_, LV_OBJ_FLAG_HIDDEN);
-    }
-    if (preview_image_ != nullptr) {
-        lv_obj_add_flag(preview_image_, LV_OBJ_FLAG_HIDDEN);
-    }
+    // Register dim callback for brightness control
+    box2_clock_set_dim_callback(ClockDimCallback, this);
 
-    // Show clock screen and bring to front
-    lv_obj_remove_flag(clock_screen_, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_move_foreground(clock_screen_);
+    box2_clock_show();
 
-    // Immediately populate it
-    UpdateClockScreen(true);
-
-    // Keep normal brightness initially; dim after delay
-    StartStandbyDimTimer();
+    // Restore full brightness when showing clock
+    Board& board = Board::GetInstance();
+    Backlight* backlight = board.GetBacklight();
+    if (backlight) {
+        backlight->RestoreBrightness();
+    }
 }
 
 void LcdDisplay::HideClockStandbyScreen() {
-    if (clock_screen_ == nullptr) {
-        return;
-    }
     DisplayLockGuard lock(this);
+    box2_clock_hide();
+    // Restore regular chat UI
+    if (container_ != nullptr) lv_obj_remove_flag(container_, LV_OBJ_FLAG_HIDDEN);
+    if (status_bar_ != nullptr) lv_obj_remove_flag(status_bar_, LV_OBJ_FLAG_HIDDEN);
+    if (top_bar_ != nullptr) lv_obj_remove_flag(top_bar_, LV_OBJ_FLAG_HIDDEN);
+    if (emoji_box_ != nullptr) lv_obj_remove_flag(emoji_box_, LV_OBJ_FLAG_HIDDEN);
 
-    // Hide clock screen
-    lv_obj_add_flag(clock_screen_, LV_OBJ_FLAG_HIDDEN);
-
-    // Stop dim timer and restore normal brightness
-    StopStandbyDimTimer();
-    auto& board = Board::GetInstance();
-    auto backlight = board.GetBacklight();
-    if (backlight != nullptr) {
+    // Restore full brightness when exiting clock
+    Board& board = Board::GetInstance();
+    Backlight* backlight = board.GetBacklight();
+    if (backlight) {
         backlight->RestoreBrightness();
-    }
-
-    // Restore normal UI
-    if (container_ != nullptr) {
-        lv_obj_remove_flag(container_, LV_OBJ_FLAG_HIDDEN);
-    }
-    if (status_bar_ != nullptr) {
-        lv_obj_remove_flag(status_bar_, LV_OBJ_FLAG_HIDDEN);
-    }
-    if (top_bar_ != nullptr) {
-        lv_obj_remove_flag(top_bar_, LV_OBJ_FLAG_HIDDEN);
-    }
-    if (emoji_box_ != nullptr) {
-        lv_obj_remove_flag(emoji_box_, LV_OBJ_FLAG_HIDDEN);
-    }
-}
-
-void LcdDisplay::UpdateClockScreen(bool force) {
-    if (clock_screen_ == nullptr) {
-        return;
-    }
-    // Only update if the clock screen is actually visible (or force during setup)
-    if (!force && lv_obj_has_flag(clock_screen_, LV_OBJ_FLAG_HIDDEN)) {
-        return;
-    }
-
-    auto& board = Board::GetInstance();
-    auto lvgl_theme = static_cast<LvglTheme*>(current_theme_);
-    auto icon_font = lvgl_theme->icon_font()->font();
-    auto text_font = lvgl_theme->text_font()->font();
-
-    DisplayLockGuard lock(this);
-
-    // ---- Update time, seconds, weekday, date ----
-    time_t now = time(NULL);
-    struct tm* tm = localtime(&now);
-    if (tm->tm_year >= 2025 - 1900) {
-        char time_str[16];
-        strftime(time_str, sizeof(time_str), "%H:%M", tm);
-        if (clock_time_label_ != nullptr) {
-            lv_label_set_text(clock_time_label_, time_str);
-        }
-
-        char sec_str[8];
-        snprintf(sec_str, sizeof(sec_str), "%02d", tm->tm_sec);
-        if (clock_seconds_label_ != nullptr) {
-            lv_label_set_text(clock_seconds_label_, sec_str);
-        }
-
-        // Weekday in Chinese / English based on language
-        static const char* weekdays_en[] = {"Sunday",   "Monday", "Tuesday", "Wednesday",
-                                            "Thursday", "Friday", "Saturday"};
-        static const char* weekdays_zh[] = {"星期日", "星期一", "星期二", "星期三",
-                                            "星期四", "星期五", "星期六"};
-        const char* wd;
-#if defined(CONFIG_LANGUAGE_ZH_CN) || defined(CONFIG_LANGUAGE_ZH_TW)
-        wd = weekdays_zh[tm->tm_wday];
-#else
-        wd = weekdays_en[tm->tm_wday];
-#endif
-        if (clock_weekday_label_ != nullptr) {
-            lv_label_set_text(clock_weekday_label_, wd);
-        }
-        if (clock_date_label_ != nullptr) {
-            char date_str[32];
-            strftime(date_str, sizeof(date_str), "%Y-%m-%d", tm);
-            lv_label_set_text(clock_date_label_, date_str);
-        }
-
-        // Lunar calendar
-        if (clock_lunar_label_ != nullptr) {
-            char lunar_str[64];
-            FormatLunarDate(tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday, lunar_str, sizeof(lunar_str));
-            uint32_t lunar_val = SolarToLunar(tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday);
-            if (lunar_val != 0) {
-                int lunar_year = (lunar_val >> 16) & 0xFFFF;
-                char gan_zhi[16];
-                FormatLunarYearGanZhi(lunar_year, gan_zhi, sizeof(gan_zhi));
-                char full_lunar[80];
-                snprintf(full_lunar, sizeof(full_lunar), "%s %s", gan_zhi, lunar_str);
-                lv_label_set_text(clock_lunar_label_, full_lunar);
-            } else {
-                lv_label_set_text(clock_lunar_label_, lunar_str);
-            }
-        }
-    } else {
-        if (clock_time_label_ != nullptr) {
-            lv_label_set_text(clock_time_label_, "--:--");
-        }
-        if (clock_seconds_label_ != nullptr) {
-            lv_label_set_text(clock_seconds_label_, "--");
-        }
-        if (clock_weekday_label_ != nullptr) {
-            lv_label_set_text(clock_weekday_label_, "");
-        }
-        if (clock_date_label_ != nullptr) {
-            lv_label_set_text(clock_date_label_, "");
-        }
-        if (clock_lunar_label_ != nullptr) {
-            lv_label_set_text(clock_lunar_label_, "");
-        }
-    }
-
-    // ---- Update battery ----
-    int battery_level = 0;
-    bool charging = false, discharging = false;
-    const char* bat_icon = MATERIAL_SYMBOLS_BATTERY_ANDROID_FRAME_FULL;
-    if (board.GetBatteryLevel(battery_level, charging, discharging)) {
-        if (charging) {
-            bat_icon = MATERIAL_SYMBOLS_BATTERY_ANDROID_FRAME_BOLT;
-        } else {
-            const char* levels[] = {
-                MATERIAL_SYMBOLS_BATTERY_ANDROID_0,
-                MATERIAL_SYMBOLS_BATTERY_ANDROID_FRAME_1,
-                MATERIAL_SYMBOLS_BATTERY_ANDROID_FRAME_2,
-                MATERIAL_SYMBOLS_BATTERY_ANDROID_FRAME_3,
-                MATERIAL_SYMBOLS_BATTERY_ANDROID_FRAME_4,
-                MATERIAL_SYMBOLS_BATTERY_ANDROID_FRAME_5,
-                MATERIAL_SYMBOLS_BATTERY_ANDROID_FRAME_6,
-                MATERIAL_SYMBOLS_BATTERY_ANDROID_FRAME_FULL,
-            };
-            int level_index = battery_level <= 0
-                                  ? 0
-                                  : (battery_level >= 100 ? 7 : 1 + ((battery_level - 1) * 6 / 99));
-            bat_icon = levels[level_index];
-        }
-        if (clock_battery_label_ != nullptr) {
-            lv_obj_set_style_text_font(clock_battery_label_, icon_font, 0);
-            lv_label_set_text(clock_battery_label_, bat_icon);
-        }
-        if (clock_battery_percent_ != nullptr) {
-            char pct[8];
-            snprintf(pct, sizeof(pct), "%d%%", battery_level);
-            lv_label_set_text(clock_battery_percent_, pct);
-        }
-    }
-
-    // ---- Update WiFi ----
-    const char* wifi_icon = board.GetNetworkStateIcon();
-    if (wifi_icon == nullptr) {
-        wifi_icon = MATERIAL_SYMBOLS_WIFI_OFF;
-    }
-    if (clock_wifi_label_ != nullptr) {
-        lv_obj_set_style_text_font(clock_wifi_label_, icon_font, 0);
-        lv_label_set_text(clock_wifi_label_, wifi_icon);
-    }
-
-    // ---- Update volume ----
-    auto codec = board.GetAudioCodec();
-    if (clock_volume_label_ != nullptr && codec != nullptr) {
-        int vol = codec->output_volume();
-        char vol_str[16];
-        if (vol == 0) {
-            snprintf(vol_str, sizeof(vol_str), "%s 0", MATERIAL_SYMBOLS_VOLUME_OFF);
-        } else {
-            snprintf(vol_str, sizeof(vol_str), "%s %d", MATERIAL_SYMBOLS_VOLUME_UP, vol);
-        }
-        lv_obj_set_style_text_font(clock_volume_label_, icon_font, 0);
-        lv_label_set_text(clock_volume_label_, vol_str);
-    }
-
-    // ---- Bottom status: show muted if needed ----
-    if (clock_status_label_ != nullptr) {
-        if (codec != nullptr && codec->output_volume() == 0) {
-            lv_label_set_text(clock_status_label_, "Muted");
-        } else {
-            lv_label_set_text(clock_status_label_, "");
-        }
-    }
-}
-
-void LcdDisplay::SetStandbyBrightness(uint8_t pct) {
-    auto& board = Board::GetInstance();
-    auto backlight = board.GetBacklight();
-    if (backlight != nullptr) {
-        backlight->SetBrightness(pct);
-    }
-}
-
-void LcdDisplay::StartStandbyDimTimer() {
-    if (standby_dim_timer_ == nullptr) {
-        return;
-    }
-    // Restore normal brightness while active
-    auto& board = Board::GetInstance();
-    auto backlight = board.GetBacklight();
-    if (backlight != nullptr) {
-        backlight->RestoreBrightness();
-    }
-    // (Re)start the one-shot dim timer
-    esp_timer_stop(standby_dim_timer_);
-    esp_timer_start_once(standby_dim_timer_, standby_dim_delay_sec_ * 1000000ULL);
-}
-
-void LcdDisplay::StopStandbyDimTimer() {
-    if (standby_dim_timer_ != nullptr) {
-        esp_timer_stop(standby_dim_timer_);
     }
 }
 
 void LcdDisplay::PokeStandbyDisplay() {
-    if (clock_screen_ == nullptr) {
-        return;
+    box2_clock_poke();
+    // Restore full brightness on interaction
+    Board& board = Board::GetInstance();
+    Backlight* backlight = board.GetBacklight();
+    if (backlight) {
+        backlight->RestoreBrightness();
     }
-    // Only act if the clock screen is currently visible
-    if (lv_obj_has_flag(clock_screen_, LV_OBJ_FLAG_HIDDEN)) {
-        return;
-    }
-    StartStandbyDimTimer();
 }
 #endif  // CONFIG_USE_CLOCK_STANDBY_SCREEN

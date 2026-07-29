@@ -1,15 +1,9 @@
-#include "lunar_calendar.h"
+#include "box2_lunar.h"
+
 #include <cstdio>
 #include <cstring>
 #include <ctime>
 
-// Lunar data table for years 1900-2100.
-// Each uint32_t entry encodes:
-//   bits  0-11 : 12 normal months big/small (1=30 days, 0=29 days)
-//   bits 12-15 : leap month (0=none, 1-12=leap month)
-//   bit     16 : leap month size (1=30 days, 0=29 days)
-//   bits 17-21 : spring festival day (1-31)
-//   bits 22-25 : spring festival month (1 or 2)
 static const uint32_t lunar_info[] = {
     0x007e8b52, 0x00a60752, 0x00900ea5, 0x007a5b2a, 0x00a0064b, 0x00880a9b, 0x00734aa6, 0x009a056a,
     0x00840b59, 0x006c2ba8, 0x00940752, 0x007c6d85, 0x00a40b25, 0x008c0a4b, 0x00755a4b, 0x009c02ad,
@@ -58,20 +52,18 @@ static const char* dizhi[] = {
     "子", "丑", "寅", "卯", "辰", "巳", "午", "未", "申", "酉", "戌", "亥"
 };
 
-// Days in a lunar month (29 or 30)
 static inline int lunar_month_days(uint32_t info, int month, bool is_leap) {
     int leap_month = (info >> 12) & 0xF;
     if (is_leap) {
-        if (month != leap_month) return 0; // not a leap month
+        if (month != leap_month) return 0;
         return ((info >> 16) & 1) ? 30 : 29;
     }
     return (info & (1U << (month - 1))) ? 30 : 29;
 }
 
-// Total days in a lunar year
 static int lunar_year_days(int year) {
     uint32_t info = lunar_info[year - 1900];
-    int sum = 348; // 29 * 12
+    int sum = 348;
     for (int i = 0; i < 12; i++) {
         if (info & (1U << i)) sum++;
     }
@@ -82,10 +74,9 @@ static int lunar_year_days(int year) {
     return sum;
 }
 
-uint32_t SolarToLunar(int year, int month, int day) {
+uint32_t box2_solar_to_lunar(int year, int month, int day) {
     if (year < 1900 || year > 2100) return 0;
 
-    // Build a simple day count since 1900-01-01
     struct tm base = {};
     base.tm_year = 1900 - 1900;
     base.tm_mon = 0;
@@ -100,7 +91,6 @@ uint32_t SolarToLunar(int year, int month, int day) {
 
     int offset = static_cast<int>((target_t - base_t) / (24 * 3600));
 
-    // Find the lunar year
     int lunar_year = 1900;
     while (lunar_year <= 2100) {
         int days = lunar_year_days(lunar_year);
@@ -113,7 +103,6 @@ uint32_t SolarToLunar(int year, int month, int day) {
     uint32_t info = lunar_info[lunar_year - 1900];
     int leap_month = (info >> 12) & 0xF;
 
-    // Find the lunar month
     int lunar_month = 1;
     bool is_leap = false;
     while (lunar_month <= 12) {
@@ -123,10 +112,7 @@ uint32_t SolarToLunar(int year, int month, int day) {
         lunar_month++;
     }
 
-    // Check if we are in the leap month
     if (leap_month > 0 && lunar_month > leap_month) {
-        // Need to adjust: the leap month sits after the normal month of same number
-        // Re-calculate more carefully
         offset = static_cast<int>((target_t - base_t) / (24 * 3600));
         for (int y = 1900; y < lunar_year; y++) offset -= lunar_year_days(y);
 
@@ -146,7 +132,6 @@ uint32_t SolarToLunar(int year, int month, int day) {
             lunar_month++;
         }
     } else if (leap_month > 0 && lunar_month == leap_month) {
-        // Could be normal month or leap month
         int md = lunar_month_days(info, lunar_month, false);
         if (offset >= md) {
             offset -= md;
@@ -161,7 +146,7 @@ uint32_t SolarToLunar(int year, int month, int day) {
            (is_leap ? 0x80000000U : 0);
 }
 
-void FormatLunarDate(int year, int month, int day, char* buffer, size_t size) {
+void box2_format_lunar_date(int year, int month, int day, char* buffer, size_t size) {
     if (size < 16) {
         if (size > 0) buffer[0] = '\0';
         return;
@@ -176,12 +161,12 @@ void FormatLunarDate(int year, int month, int day, char* buffer, size_t size) {
     snprintf(buffer, size, "%s%s%s", leap_str, lunar_months_cn[m - 1], lunar_days_cn[d - 1]);
 }
 
-void FormatLunarYearGanZhi(int lunar_year, char* buffer, size_t size) {
+void box2_format_lunar_ganzhi(int lunar_year, char* buffer, size_t size) {
     if (size < 8) {
         if (size > 0) buffer[0] = '\0';
         return;
     }
-    int offset = lunar_year - 1900 + 36; // 1900 is 庚子年 (37th in cycle), adjust
+    int offset = lunar_year - 1900 + 36;
     int tg = offset % 10;
     int dz = offset % 12;
     snprintf(buffer, size, "%s%s年", tiangan[tg], dizhi[dz]);

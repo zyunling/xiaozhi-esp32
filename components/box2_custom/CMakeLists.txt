@@ -1,0 +1,18 @@
+idf_component_register(
+    SRCS
+        "box2_lunar.cc"
+        "box2_clock_screen.cc"
+    INCLUDE_DIRS
+        "include"
+    PRIV_INCLUDE_DIRS
+        "../../main"
+        "../../main/display"
+        "../../main/display/lvgl_display"
+        "../../main/boards/common"
+        "../../main/audio"
+    PRIV_REQUIRES
+        esp_timer
+        esp_system
+        lvgl__lvgl
+        esp_pm
+)

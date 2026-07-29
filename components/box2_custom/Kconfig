@@ -1,0 +1,20 @@
+menu "BOX2 Custom Features"
+    depends on USE_CLOCK_STANDBY_SCREEN
+
+config BOX2_CLOCK_DEFAULT_BRIGHTNESS
+    int "Default standby brightness (percent)"
+    default 50
+    range 1 100
+    help
+        Backlight brightness when in standby mode after the dim timer expires.
+        50% is a good balance between visibility and power saving.
+
+config BOX2_CLOCK_DIM_DELAY_SEC
+    int "Dim delay after last interaction (seconds)"
+    default 10
+    range 1 60
+    help
+        Seconds after the last button press or state change before the
+        backlight is dimmed to the standby brightness level.
+
+endmenu
