@@ -923,13 +923,23 @@ void Application::HandleStateChangedEvent() {
             display->SetEmotion("neutral");  // Then set emotion (wechat mode checks child count)
             audio_service_.EnableVoiceProcessing(false);
             audio_service_.EnableWakeWordDetection(true);
+#if CONFIG_USE_CLOCK_STANDBY_SCREEN
+            // Show clock standby screen when returning to idle
+            display->ShowClockStandbyScreen();
+#endif
             break;
         case kDeviceStateConnecting:
+#if CONFIG_USE_CLOCK_STANDBY_SCREEN
+            display->HideClockStandbyScreen();
+#endif
             display->SetStatus(Lang::Strings::CONNECTING);
             display->SetEmotion("neutral");
             display->SetChatMessage("system", "");
             break;
         case kDeviceStateListening:
+#if CONFIG_USE_CLOCK_STANDBY_SCREEN
+            display->HideClockStandbyScreen();
+#endif
             display->SetStatus(Lang::Strings::LISTENING);
             display->SetEmotion("neutral");
 
@@ -949,6 +959,9 @@ void Application::HandleStateChangedEvent() {
             }
             break;
         case kDeviceStateSpeaking:
+#if CONFIG_USE_CLOCK_STANDBY_SCREEN
+            display->HideClockStandbyScreen();
+#endif
             display->SetStatus(Lang::Strings::SPEAKING);
 
             if (listening_mode_ != kListeningModeRealtime) {
@@ -959,10 +972,16 @@ void Application::HandleStateChangedEvent() {
             audio_service_.ResetDecoder();
             break;
         case kDeviceStateWifiConfiguring:
+#if CONFIG_USE_CLOCK_STANDBY_SCREEN
+            display->HideClockStandbyScreen();
+#endif
             audio_service_.EnableVoiceProcessing(false);
             audio_service_.EnableWakeWordDetection(false);
             break;
         default:
+#if CONFIG_USE_CLOCK_STANDBY_SCREEN
+            display->HideClockStandbyScreen();
+#endif
             // Do nothing
             break;
     }

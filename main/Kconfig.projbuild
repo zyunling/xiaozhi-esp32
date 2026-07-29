@@ -810,6 +810,16 @@ choice DISPLAY_STYLE
             || BOARD_TYPE_ESP_SENSAIRSHUTTLE
 endchoice
 
+config USE_CLOCK_STANDBY_SCREEN
+    bool "Enable Clock Standby Screen (Idle state shows time, weekday, WiFi, battery)"
+    default n
+    help
+        When enabled, the device displays a full clock screen in Idle state
+        showing: current time (HH:MM), weekday, WiFi status icon,
+        and battery level with percentage. When entering conversation mode,
+        it switches to the chat UI; when returning to Idle, it shows the
+        clock screen again.
+
 config USE_MULTILINE_CHAT_MESSAGE
     bool "Use multiline chat message display (default mode only)"
     depends on USE_DEFAULT_MESSAGE_STYLE

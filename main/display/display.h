@@ -49,6 +49,11 @@ public:
     virtual void SetEmojiCollection(std::shared_ptr<EmojiCollection>) {}
     virtual void SetupUI() { setup_ui_called_ = true; }
 
+    // Clock standby screen interface (default no-op for boards that don't implement it)
+    virtual void ShowClockStandbyScreen() {}
+    virtual void HideClockStandbyScreen() {}
+    virtual void PokeStandbyDisplay() {}
+
     inline int width() const { return width_; }
     inline int height() const { return height_; }
     inline bool IsSetupUICalled() const { return setup_ui_called_; }

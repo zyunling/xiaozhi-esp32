@@ -56,11 +56,11 @@ enum PowerSupply {
 #define LCD_PIN_D6 GPIO_NUM_4
 #define LCD_PIN_D7 GPIO_NUM_3
 
-#define DISPLAY_WIDTH 240
-#define DISPLAY_HEIGHT 320
+#define DISPLAY_WIDTH 320
+#define DISPLAY_HEIGHT 240
 #define DISPLAY_MIRROR_X false
 #define DISPLAY_MIRROR_Y false
-#define DISPLAY_SWAP_XY false
+#define DISPLAY_SWAP_XY true
 
 #define DISPLAY_OFFSET_X 0
 #define DISPLAY_OFFSET_Y 0

@@ -84,6 +84,7 @@ private:
     void InitializePowerManager() {
         power_manager_ = new PowerManager(io_exp_handle);
         power_manager_->OnChargingStatusChanged([this](bool is_charging) {
+            power_status_ = is_charging ? kDeviceTypecSupply : kDeviceBatterySupply;
             if (is_charging) {
                 power_save_timer_->SetEnabled(false);
             } else {
@@ -96,7 +97,12 @@ private:
         power_save_timer_ = new PowerSaveTimer(-1, 60, 300);
         power_save_timer_->OnEnterSleepMode([this]() {
             GetDisplay()->SetPowerSaveMode(true);
-            GetBacklight()->SetBrightness(1);
+            if (power_status_ == kDeviceTypecSupply) {
+                // Charging: keep standby dim level (30%), don't go to 1%
+                // The clock standby dim timer handles brightness
+            } else {
+                GetBacklight()->SetBrightness(1);
+            }
         });
         power_save_timer_->OnExitSleepMode([this]() {
             GetDisplay()->SetPowerSaveMode(false);
@@ -113,7 +119,9 @@ private:
             }
         });
 
-        power_save_timer_->SetEnabled(true);
+        // Only enable auto-sleep on battery power; disable when charging
+        bool charging = (IoExpanderGetLevel(XIO_CHRG) == 0);
+        power_save_timer_->SetEnabled(!charging);
     }
 
     void audio_volume_change(bool direction) {
@@ -241,18 +249,21 @@ private:
         iot_button_register_cb(l_btn_handle, BUTTON_PRESS_DOWN, nullptr, [](void* button_handle, void* usr_data) {
             auto self = static_cast<atk_dnesp32s3_box2_wifi*>(usr_data);
             self->power_save_timer_->WakeUp();
+            self->GetDisplay()->PokeStandbyDisplay();
             self->audio_volume_change(false);
         }, this);
 
         iot_button_register_cb(l_btn_handle, BUTTON_LONG_PRESS_START, nullptr, [](void* button_handle, void* usr_data) {
             auto self = static_cast<atk_dnesp32s3_box2_wifi*>(usr_data);
             self->power_save_timer_->WakeUp();
+            self->GetDisplay()->PokeStandbyDisplay();
             self->audio_volume_minimum();
         }, this);
 
         iot_button_register_cb(m_btn_handle, BUTTON_PRESS_DOWN, nullptr, [](void* button_handle, void* usr_data) {
             auto self = static_cast<atk_dnesp32s3_box2_wifi*>(usr_data);
             self->power_save_timer_->WakeUp();
+            self->GetDisplay()->PokeStandbyDisplay();
             auto& app = Application::GetInstance();
             app.ToggleChatState();
         }, this);
@@ -266,8 +277,10 @@ private:
                 return;
             }
 
+            self->GetDisplay()->PokeStandbyDisplay();
+
             if (self->power_status_ == kDeviceBatterySupply) {
-                auto backlight = Board::GetInstance().GetBacklight();
+                auto backlight = self->GetBacklight();
                 backlight->SetBrightness(0);
                 esp_timer_stop(self->power_manager_->timer_handle_);
                 esp_io_expander_set_dir(self->io_exp_handle, XIO_CHG_CTRL, IO_EXPANDER_OUTPUT);
@@ -281,12 +294,14 @@ private:
         iot_button_register_cb(r_btn_handle, BUTTON_PRESS_DOWN, nullptr, [](void* button_handle, void* usr_data) {
             auto self = static_cast<atk_dnesp32s3_box2_wifi*>(usr_data);
             self->power_save_timer_->WakeUp();
+            self->GetDisplay()->PokeStandbyDisplay();
             self->audio_volume_change(true);
         }, this);
 
         iot_button_register_cb(r_btn_handle, BUTTON_LONG_PRESS_START, nullptr, [](void* button_handle, void* usr_data) {
             auto self = static_cast<atk_dnesp32s3_box2_wifi*>(usr_data);
             self->power_save_timer_->WakeUp();
+            self->GetDisplay()->PokeStandbyDisplay();
             self->audio_volume_maxmum();
         }, this);
     }
@@ -375,7 +390,7 @@ private:
         esp_lcd_panel_io_tx_param(panel_io, 0xC5, (uint8_t[]) {0x20}, 1);
         esp_lcd_panel_io_tx_param(panel_io, 0xC6, (uint8_t[]) {0x10}, 1);
         esp_lcd_panel_io_tx_param(panel_io, 0xC7, (uint8_t[]) {0xB0}, 1);
-        esp_lcd_panel_io_tx_param(panel_io, 0x36, (uint8_t[]) {0x60}, 1);
+        // MADCTL is configured by esp_lcd_panel_swap_xy / esp_lcd_panel_mirror below
         esp_lcd_panel_io_tx_param(panel_io, 0x3A, (uint8_t[]) {0x55}, 1);
         esp_lcd_panel_io_tx_param(panel_io, 0xB1, (uint8_t[]) {0x00,0x1B}, 2);
         esp_lcd_panel_io_tx_param(panel_io, 0xF2, (uint8_t[]) {0x08}, 1);

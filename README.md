@@ -1,6 +1,10 @@
+> **Fork Notice**: This repository is forked from [78/xiaozhi-esp32](https://github.com/78/xiaozhi-esp32). It includes modifications specifically for the **正点原子 (Alientek) BOX2** hardware, adding a clock standby screen, lunar calendar, landscape display, dark theme, and WeChat-style chat UI. See the [BOX2 Custom Features](#box2-custom-features) section below for details.
+>
+> **固件下载**: 见 [Releases](https://github.com/zyunling/xiaozhi-esp32/releases) 页面，可直接刷入 BOX2。
+
 # An MCP-based Chatbot
 
-(English | [中文](README_zh.md) | [日本語](README_ja.md))
+(English | [简体中文](README_zh.md) | [日本語](README_ja.md))
 
 ## Introduction
 
@@ -163,6 +167,39 @@ We hope this project helps everyone understand AI hardware development and apply
 If you have any ideas or suggestions, please feel free to raise Issues or join our [Discord](https://discord.gg/C759fGMBcZ) or QQ group: 1095994019
 
 ## Star History
+
+## BOX2 Custom Features
+
+This fork adds the following enhancements for the **Alientek ATK-DNESP32S3-BOX2-WiFi** board:
+
+### Clock Standby Screen
+- **Landscape display** (320x240) optimized for desktop placement
+- **Dark theme** with vivid colored text:
+  - Cyan (`#00E5FF`) for HH:MM time
+  - Orange (`#FF9800`) for jumping seconds
+  - Green (`#81C784`) for weekday
+  - Blue (`#90CAF9`) for solar date
+  - Purple (`#CE93D8`) for lunar calendar
+- **Real-time second jumping** — updates every second
+- **Lunar calendar** display including Gan-Zhi year (e.g. 乙巳年 六月初七)
+- **Volume icon + value** shown in top status bar
+- **WiFi + Battery** status in top bar
+
+### Brightness & Power Management
+- **10s idle dimming**: normal brightness for 10 seconds after entering standby, then dims to 50%
+- **Button press wake**: any button press restores full brightness and restarts the 10s timer
+- **Charging mode**: stays bright, never enters deep sleep, never auto-shutdown
+- **Battery mode**: dims to 1% after 60s, auto-shutdown after 300s to protect battery
+- **Wake word always active** in standby (BOX2 uses `cpu_max_freq=-1`)
+
+### WeChat-Style Chat UI
+- Enabled via `CONFIG_USE_WECHAT_MESSAGE_STYLE`
+- Conversation content displayed in WeChat-style bubble layout
+
+### Build Variant
+Use the `atk-dnesp32s3-box2-wifi-clock-wechat` build variant which enables both the clock standby screen and WeChat UI.
+
+---
 
 <a href="https://star-history.com/#78/xiaozhi-esp32&Date">
  <picture>

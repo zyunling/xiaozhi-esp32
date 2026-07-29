@@ -6,6 +6,13 @@
         {
             "name": "atk-dnesp32s3-box2-wifi",
             "sdkconfig_append": []
+        },
+        {
+            "name": "atk-dnesp32s3-box2-wifi-clock-wechat",
+            "sdkconfig_append": [
+                "CONFIG_USE_WECHAT_MESSAGE_STYLE=y",
+                "CONFIG_USE_CLOCK_STANDBY_SCREEN=y"
+            ]
         }
     ]
 }
