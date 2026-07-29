@@ -2,6 +2,7 @@
 #define BOX2_LUNAR_H
 
 #include <cstdint>
+#include <cstddef>
 
 #ifdef __cplusplus
 extern "C" {
