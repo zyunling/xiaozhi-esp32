@@ -199,6 +199,17 @@ This fork adds the following enhancements for the **Alientek ATK-DNESP32S3-BOX2-
 ### Build Variant
 Use the `atk-dnesp32s3-box2-wifi-clock-wechat` build variant which enables both the clock standby screen and WeChat UI.
 
+### OTA 与版本维护策略
+
+- **固件版本**: 基础版本为官方主线 `2.4.0`，fork 版追加 `-clock1` 后缀（例如 `2.4.0-clock1`），与官方版本明确区分，防止被官方 OTA 误覆盖。
+- **OTA 服务器**: 默认 `OTA_URL` 已改为本 fork 的 GitHub Release 静态地址（`https://github.com/zyunling/xiaozhi-esp32/releases/download/ota/clock.json`）。若该地址返回非 200，则本次 OTA 检查失败，不会覆盖已刷入的自定义固件。
+- **合并官方更新的步骤**:
+  1. `git fetch upstream && git merge upstream/main` 或 `git rebase upstream/main`
+  2. 若有冲突，手工合并 `main/display/lcd_display.{cc,h}`、`main/application.cc`、`main/Kconfig.projbuild`、`CMakeLists.txt` 等我们改过的文件
+  3. 递增版本号后缀（如 `-clock1` → `-clock2`），重新编译并推送到 GitHub Release
+  4. 可选：将新的 `clock.json` 元数据文件上传到 Release 页面，实现自己的远程 OTA
+- **合并风险**: 由于自定义代码直接嵌入在主文件中（而非隔离为组件），每次同步上游需要人工解决冲突，这是 fork 定制固件的常规成本。建议每 1~2 周同步一次，避免累积过大差异。
+
 ---
 
 <a href="https://star-history.com/#78/xiaozhi-esp32&Date">

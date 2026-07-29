@@ -2,9 +2,11 @@ menu "Xiaozhi Assistant"
 
 config OTA_URL
     string "Default OTA URL"
-    default "https://api.tenclass.net/xiaozhi/ota/"
+    default "https://github.com/zyunling/xiaozhi-esp32/releases/download/ota/clock.json"
     help
         The application will access this URL to check for new firmwares and server address.
+        Modified version: points to fork's release asset to avoid being overwritten by
+        official OTA. Replace this URL with your own OTA server endpoint if needed.
 
 choice
     prompt "Flash Assets"

@@ -1,4 +1,5 @@
 #include "lunar_calendar.h"
+#include <cstdio>
 #include <cstring>
 #include <ctime>
 
@@ -166,7 +167,6 @@ void FormatLunarDate(int year, int month, int day, char* buffer, size_t size) {
         return;
     }
     const char* leap_str = (year & 0x8000) ? "闰" : "";
-    int y = year & 0x7FFF;
     int m = month;
     int d = day;
     if (m < 1 || m > 12 || d < 1 || d > 30) {
