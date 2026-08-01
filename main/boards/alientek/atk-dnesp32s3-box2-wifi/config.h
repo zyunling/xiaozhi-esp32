@@ -60,7 +60,13 @@ enum PowerSupply {
 #define DISPLAY_HEIGHT 240
 #define DISPLAY_MIRROR_X false
 #define DISPLAY_MIRROR_Y false
+// Landscape by default on BOX2 (desk use, plugged into power).
+// Disable CONFIG_BOX2_LANDSCAPE in menuconfig to keep portrait.
+#if defined(CONFIG_BOX2_LANDSCAPE)
+#define DISPLAY_SWAP_XY false
+#else
 #define DISPLAY_SWAP_XY true
+#endif
 
 #define DISPLAY_OFFSET_X 0
 #define DISPLAY_OFFSET_Y 0

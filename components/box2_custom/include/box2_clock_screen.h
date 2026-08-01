@@ -23,12 +23,11 @@ public:
     void Destroy();
 
     void SetBattery(int level, int charging);
-    void SetWifiIcon(const char* icon);
+    void SetWifiIcon(const char* icon);   // WiFi icon glyph (MATERIAL_SYMBOLS_WIFI_*)
     void SetVolume(int volume);
     void SetDimCallback(box2_standby_cb_t cb, void* user_data);
 
     int GetStandbyBrightness() const { return standby_brightness_; }
-
     bool IsVisible() const { return visible_; }
 
 private:
@@ -38,7 +37,9 @@ private:
     ClockScreen& operator=(const ClockScreen&) = delete;
 
     void UpdateTime();
-    void UpdateLunar();
+#ifdef CONFIG_USE_LUNAR_STANDBY
+    void UpdateLunar(struct tm* tm);
+#endif
 
     void StartDimTimer();
     void StopDimTimer();
@@ -56,36 +57,37 @@ private:
     box2_standby_cb_t dim_callback_ = nullptr;
     void* dim_cb_user_data_ = nullptr;
 
-    // Timing
     esp_timer_handle_t dim_timer_ = nullptr;
 
-    // Main screen
+    // Root full-screen overlay
     lv_obj_t* clock_screen_ = nullptr;
 
-    // Top bar elements
-    lv_obj_t* wifi_icon_ = nullptr;
-    lv_obj_t* volume_icon_ = nullptr;
-    lv_obj_t* volume_bar_ = nullptr;
-    lv_obj_t* battery_icon_ = nullptr;
+    // Status bar (top) — responsive (works in portrait & landscape)
+    lv_obj_t* wifi_icon_   = nullptr;   // material-symbols WiFi glyph
+    lv_obj_t* volume_bar_  = nullptr;
+    lv_obj_t* battery_icon_= nullptr;
     lv_obj_t* battery_pct_ = nullptr;
 
-    // Time area
-    lv_obj_t* card_hh_ = nullptr;
+    // Time cards
+    lv_obj_t* card_hh_  = nullptr;
     lv_obj_t* hh_label_ = nullptr;
     lv_obj_t* colon_label_ = nullptr;
-    lv_obj_t* card_mm_ = nullptr;
+    lv_obj_t* card_mm_  = nullptr;
     lv_obj_t* mm_label_ = nullptr;
-    lv_obj_t* card_ss_ = nullptr;
+    lv_obj_t* card_ss_  = nullptr;
     lv_obj_t* ss_label_ = nullptr;
 
-    // Date area
-    lv_obj_t* date_label_ = nullptr;
-    lv_obj_t* weekday_tag_ = nullptr;
-    lv_obj_t* weekday_label_ = nullptr;
+    // Date + Weekday
+    lv_obj_t* date_row_     = nullptr;
+    lv_obj_t* date_label_   = nullptr;
+    lv_obj_t* weekday_tag_  = nullptr;
+    lv_obj_t* weekday_label_= nullptr;
 
-    // Lunar area
-    lv_obj_t* lunar_label_ = nullptr;
-    lv_obj_t* star_icon_ = nullptr;
+    // Lunar row (optional via CONFIG_USE_LUNAR_STANDBY)
+#ifdef CONFIG_USE_LUNAR_STANDBY
+    lv_obj_t* lunar_row_ = nullptr;
+    lv_obj_t* lunar_label_= nullptr;
+#endif
 };
 
 }  // namespace box2

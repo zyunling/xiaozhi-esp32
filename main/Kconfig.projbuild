@@ -817,10 +817,31 @@ config USE_CLOCK_STANDBY_SCREEN
     default n
     help
         When enabled, the device displays a full clock screen in Idle state
-        showing: current time (HH:MM), weekday, WiFi status icon,
-        and battery level with percentage. When entering conversation mode,
-        it switches to the chat UI; when returning to Idle, it shows the
-        clock screen again.
+        showing: current time (HH:MM:SS), date, weekday, WiFi status icon,
+        volume bar, and battery level with percentage. When entering
+        conversation mode, it switches to the chat UI; when returning to
+        Idle, it shows the clock screen again.
+
+config USE_LUNAR_STANDBY
+    bool "Show lunar calendar on clock standby screen"
+    depends on USE_CLOCK_STANDBY_SCREEN
+    default y
+    help
+        Show Chinese lunar calendar info (e.g. "农历：戊申年十月初九")
+        on the clock standby screen. Disable this to save code space or
+        if lunar calculation causes issues.
+
+config BOX2_LANDSCAPE
+    bool "BOX2: default landscape (horizontal) display"
+    depends on BOARD_TYPE_ATK_DNESP32S3_BOX2_WIFI
+    default y
+    help
+        Rotate the BOX2 display to landscape (logical 320x240) so it can sit
+        horizontally on a desk while plugged into power. The clock standby
+        screen and the chat UI both adapt automatically.
+        Disable this to keep the original portrait (vertical) orientation.
+        If the image appears mirrored/upside-down after flashing, toggle
+        DISPLAY_MIRROR_X / DISPLAY_MIRROR_Y in the board config.h.
 
 config USE_MULTILINE_CHAT_MESSAGE
     bool "Use multiline chat message display (default mode only)"
