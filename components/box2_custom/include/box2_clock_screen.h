@@ -3,6 +3,7 @@
 
 #include <lvgl.h>
 #include <esp_timer.h>
+#include <ctime>
 
 typedef void (*box2_standby_cb_t)(void* user_data);
 
@@ -38,7 +39,7 @@ private:
 
     void UpdateTime();
 #ifdef CONFIG_USE_LUNAR_STANDBY
-    void UpdateLunar(struct ::tm* tm);
+    void UpdateLunar(std::tm* tm);
 #endif
 
     void StartDimTimer();
