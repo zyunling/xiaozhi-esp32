@@ -47,13 +47,7 @@ jobs:
           # 只编译正点原子 BOX2 clock-wechat 目标，避免 172 个板型全部并行编译
           # （免费运行器并发有限，全量编译既慢又浪费额度）。
           if [[ "$EVENT_NAME" == "push" || "$EVENT_NAME" == "workflow_dispatch" ]]; then
-            FILTERED=$(printf '%s' "$ALL_VARIANTS" | python3 -c "
-import sys, json
-variants = json.load(sys.stdin)
-target = [v for v in variants
-          if (v.get('full_name','') or v.get('name','')) == 'alientek-atk-dnesp32s3-box2-wifi-clock-wechat']
-print(json.dumps(target))
-")
+            FILTERED=$(printf '%s' "$ALL_VARIANTS" | python3 -c "import sys, json; v = json.load(sys.stdin); t = [x for x in v if (x.get('full_name','') or x.get('name','')) == 'alientek-atk-dnesp32s3-box2-wifi-clock-wechat']; print(json.dumps(t))")
             echo "variants=$FILTERED" >> $GITHUB_OUTPUT
             exit 0
           fi
