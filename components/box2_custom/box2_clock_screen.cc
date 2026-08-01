@@ -3,16 +3,15 @@
 #include "box2_custom.h"
 
 #include "display.h"
-#include <material_symbols.h>
 
 #include <esp_log.h>
 #include <ctime>
 #include <cstring>
 
-// Icon font provided by the project (material symbols). Battery glyphs use it.
-LV_FONT_DECLARE(BUILTIN_ICON_FONT);
-
-// LVGL built-in montserrat fonts — always available via lvgl.h, used for digits.
+// LVGL built-in montserrat fonts — enabled via sdkconfig for the BOX2 clock-wechat
+// build (CONFIG_LV_FONT_MONTSERRAT_*), used for the large clock digits and labels.
+// The WiFi / battery icons are drawn with LVGL primitives (arcs / rects) so the
+// clock screen has zero dependency on the project's icon-font subset.
 extern const lv_font_t lv_font_montserrat_12;
 extern const lv_font_t lv_font_montserrat_14;
 extern const lv_font_t lv_font_montserrat_16;
@@ -83,11 +82,40 @@ void ClockScreen::Setup(lv_obj_t* screen, LcdDisplay* display,
     lv_obj_set_flex_align(top_bar, LV_FLEX_ALIGN_SPACE_BETWEEN,
                           LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
-    // ── Left: WiFi icon (material symbols, same icon font as the chat UI) ──
-    wifi_icon_ = lv_label_create(top_bar);
-    lv_label_set_text(wifi_icon_, MATERIAL_SYMBOLS_WIFI);
-    lv_obj_set_style_text_font(wifi_icon_, &BUILTIN_ICON_FONT, 0);
-    lv_obj_set_style_text_color(wifi_icon_, kWhite, 0);
+    // ── Left: WiFi icon — hand-drawn with LVGL arcs (no font dependency) ──
+    // Three concentric top-arcs sharing a bottom-center point + a center dot.
+    wifi_container_ = lv_obj_create(top_bar);
+    lv_obj_set_size(wifi_container_, 24, 18);
+    lv_obj_set_style_bg_opa(wifi_container_, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(wifi_container_, 0, 0);
+    lv_obj_set_style_pad_all(wifi_container_, 0, 0);
+
+    const int cx = 12, cy = 15;
+    const int arc_diams[3] = {10, 16, 22};
+    for (int i = 0; i < 3; i++) {
+        lv_obj_t* a = lv_arc_create(wifi_container_);
+        int d = arc_diams[i];
+        lv_obj_set_size(a, d, d);
+        lv_obj_set_pos(a, cx - d / 2, cy - d / 2);
+        lv_arc_set_range(a, 0, 100);
+        lv_arc_set_value(a, 100);
+        lv_arc_set_bg_angles(a, 225, 315);
+        lv_arc_set_angles(a, 225, 315);
+        lv_obj_set_style_arc_width(a, 2, LV_PART_INDICATOR);
+        lv_obj_set_style_arc_color(a, kWhite, LV_PART_INDICATOR);
+        lv_obj_set_style_arc_opa(a, LV_OPA_COVER, LV_PART_INDICATOR);
+        lv_obj_set_style_arc_opa(a, LV_OPA_TRANSP, LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(a, LV_OPA_TRANSP, LV_PART_MAIN);
+        lv_obj_set_style_opa(a, LV_OPA_TRANSP, LV_PART_KNOB);
+        lv_obj_clear_flag(a, LV_OBJ_FLAG_CLICKABLE);
+    }
+    lv_obj_t* dot = lv_obj_create(wifi_container_);
+    lv_obj_set_size(dot, 4, 4);
+    lv_obj_set_style_radius(dot, 2, 0);
+    lv_obj_set_style_bg_color(dot, kWhite, 0);
+    lv_obj_set_style_bg_opa(dot, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(dot, 0, 0);
+    lv_obj_align(dot, LV_ALIGN_BOTTOM_MID, 0, -1);
 
     // ── Right group: volume bar + battery icon + percent ──
     lv_obj_t* right_group = lv_obj_create(top_bar);
@@ -110,10 +138,36 @@ void ClockScreen::Setup(lv_obj_t* screen, LcdDisplay* display,
     lv_obj_set_style_border_width(volume_bar_, 0, 0);
     lv_obj_set_style_bg_color(volume_bar_, kBlue, LV_PART_INDICATOR);
 
-    battery_icon_ = lv_label_create(right_group);
-    lv_label_set_text(battery_icon_, MATERIAL_SYMBOLS_BATTERY_ANDROID_FRAME_FULL);
-    lv_obj_set_style_text_font(battery_icon_, &BUILTIN_ICON_FONT, 0);
-    lv_obj_set_style_text_color(battery_icon_, kGreen, 0);
+    // ── Battery icon — hand-drawn (outline + fill + nub), no font dependency ──
+    battery_container_ = lv_obj_create(right_group);
+    lv_obj_set_size(battery_container_, 32, 18);
+    lv_obj_set_style_bg_opa(battery_container_, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(battery_container_, 0, 0);
+    lv_obj_set_style_pad_all(battery_container_, 0, 0);
+
+    lv_obj_t* body = lv_obj_create(battery_container_);
+    lv_obj_set_size(body, 26, 14);
+    lv_obj_set_pos(body, 0, 2);
+    lv_obj_set_style_radius(body, 3, 0);
+    lv_obj_set_style_bg_opa(body, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_color(body, kCardBorder, 0);
+    lv_obj_set_style_border_width(body, 1, 0);
+
+    lv_obj_t* nub = lv_obj_create(battery_container_);
+    lv_obj_set_size(nub, 3, 6);
+    lv_obj_set_pos(nub, 26, 6);
+    lv_obj_set_style_radius(nub, 1, 0);
+    lv_obj_set_style_bg_color(nub, kCardBorder, 0);
+    lv_obj_set_style_bg_opa(nub, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(nub, 0, 0);
+
+    battery_fill_ = lv_obj_create(battery_container_);
+    lv_obj_set_size(battery_fill_, 22, 10);
+    lv_obj_set_pos(battery_fill_, 2, 4);
+    lv_obj_set_style_radius(battery_fill_, 1, 0);
+    lv_obj_set_style_bg_color(battery_fill_, kGreen, 0);
+    lv_obj_set_style_bg_opa(battery_fill_, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(battery_fill_, 0, 0);
 
     battery_pct_ = lv_label_create(right_group);
     lv_label_set_text(battery_pct_, "88%");
@@ -248,7 +302,6 @@ void ClockScreen::Setup(lv_obj_t* screen, LcdDisplay* display,
     lv_obj_set_style_text_color(lunar_label_, kDimText, 0);
 #else
     lunar_row_   = nullptr;
-    star_icon_   = nullptr;
     lunar_label_ = nullptr;
 #endif
 
@@ -311,40 +364,25 @@ void ClockScreen::SetBattery(int level, int charging) {
     snprintf(pct, sizeof(pct), "%d%%", level);
     lv_label_set_text(battery_pct_, pct);
 
-    const char* icon;
-    if (charging) {
-        icon = MATERIAL_SYMBOLS_BATTERY_ANDROID_FRAME_BOLT;
-        lv_obj_set_style_text_color(battery_icon_, kYellow, 0);
-    } else if (level <= 5) {
-        icon = MATERIAL_SYMBOLS_BATTERY_ANDROID_0;
-        lv_obj_set_style_text_color(battery_icon_, kRed, 0);
-    } else if (level >= 100) {
-        icon = MATERIAL_SYMBOLS_BATTERY_ANDROID_FRAME_FULL;
-        lv_obj_set_style_text_color(battery_icon_, kGreen, 0);
-    } else {
-        int idx = (level - 1) / 16 + 1;  // 1..6
-        if (idx > 6) idx = 6;
-        static const char* kFrames[6] = {
-            MATERIAL_SYMBOLS_BATTERY_ANDROID_FRAME_1,
-            MATERIAL_SYMBOLS_BATTERY_ANDROID_FRAME_2,
-            MATERIAL_SYMBOLS_BATTERY_ANDROID_FRAME_3,
-            MATERIAL_SYMBOLS_BATTERY_ANDROID_FRAME_4,
-            MATERIAL_SYMBOLS_BATTERY_ANDROID_FRAME_5,
-            MATERIAL_SYMBOLS_BATTERY_ANDROID_FRAME_6,
-        };
-        icon = kFrames[idx - 1];
-        lv_obj_set_style_text_color(battery_icon_, kGreen, 0);
-    }
-    lv_label_set_text(battery_icon_, icon);
+    // Resize the hand-drawn fill (body interior is ~22px wide).
+    int w = 2 + (level * 20) / 100;   // 2..22
+    if (w > 22) w = 22;
+    if (w < 2)  w = 2;
+    lv_obj_set_width(battery_fill_, w);
+
+    lv_color_t c = kGreen;
+    if (charging)     c = kYellow;
+    else if (level <= 5) c = kRed;
+    lv_obj_set_style_bg_color(battery_fill_, c, 0);
 }
 
 void ClockScreen::SetWifiIcon(const char* icon) {
-    if (!initialized_ || !wifi_icon_) return;
-    // The board passes a MATERIAL_SYMBOLS_WIFI_* glyph (or WIFI_OFF);
-    // render it directly as the WiFi icon in the status bar.
-    if (icon != nullptr && icon[0] != '\0') {
-        lv_label_set_text(wifi_icon_, icon);
-    }
+    // The clock screen draws its own WiFi glyph with LVGL arcs, so we only
+    // toggle visibility/opacity here. When the board reports no connection
+    // (nullptr / empty), dim the icon; otherwise show it at full opacity.
+    if (!initialized_ || !wifi_container_) return;
+    bool connected = (icon != nullptr && icon[0] != '\0');
+    lv_obj_set_style_opa(wifi_container_, connected ? LV_OPA_COVER : LV_OPA_40, 0);
 }
 
 void ClockScreen::SetVolume(int volume) {

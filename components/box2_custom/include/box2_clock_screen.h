@@ -23,7 +23,7 @@ public:
     void Destroy();
 
     void SetBattery(int level, int charging);
-    void SetWifiIcon(const char* icon);   // WiFi icon glyph (MATERIAL_SYMBOLS_WIFI_*)
+    void SetWifiIcon(const char* icon);   // nullptr/empty -> dim the WiFi icon
     void SetVolume(int volume);
     void SetDimCallback(box2_standby_cb_t cb, void* user_data);
 
@@ -63,9 +63,10 @@ private:
     lv_obj_t* clock_screen_ = nullptr;
 
     // Status bar (top) — responsive (works in portrait & landscape)
-    lv_obj_t* wifi_icon_   = nullptr;   // material-symbols WiFi glyph
+    lv_obj_t* wifi_container_ = nullptr;   // hand-drawn WiFi icon (LVGL arcs)
     lv_obj_t* volume_bar_  = nullptr;
-    lv_obj_t* battery_icon_= nullptr;
+    lv_obj_t* battery_container_ = nullptr; // hand-drawn battery (outline+fill+nub)
+    lv_obj_t* battery_fill_      = nullptr;
     lv_obj_t* battery_pct_ = nullptr;
 
     // Time cards

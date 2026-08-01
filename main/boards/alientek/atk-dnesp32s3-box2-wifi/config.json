@@ -12,7 +12,12 @@
             "sdkconfig_append": [
                 "CONFIG_USE_WECHAT_MESSAGE_STYLE=y",
                 "CONFIG_USE_CLOCK_STANDBY_SCREEN=y",
-                "CONFIG_BOX2_LANDSCAPE=y"
+                "CONFIG_BOX2_LANDSCAPE=y",
+                "CONFIG_LV_FONT_MONTSERRAT_12=y",
+                "CONFIG_LV_FONT_MONTSERRAT_14=y",
+                "CONFIG_LV_FONT_MONTSERRAT_16=y",
+                "CONFIG_LV_FONT_MONTSERRAT_28=y",
+                "CONFIG_LV_FONT_MONTSERRAT_44=y"
             ]
         }
     ]
