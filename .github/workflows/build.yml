@@ -43,8 +43,8 @@ jobs:
         run: |
           EVENT_NAME="${{ github.event_name }}"
 
-          # push 到 main 分支，编译全部变体
-          if [[ "$EVENT_NAME" == "push" ]]; then
+          # push 到 main 分支，或手动触发（workflow_dispatch），编译全部变体
+          if [[ "$EVENT_NAME" == "push" || "$EVENT_NAME" == "workflow_dispatch" ]]; then
             echo "variants=$ALL_VARIANTS" >> $GITHUB_OUTPUT
             exit 0
           fi
