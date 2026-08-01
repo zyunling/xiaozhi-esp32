@@ -38,7 +38,7 @@ private:
 
     void UpdateTime();
 #ifdef CONFIG_USE_LUNAR_STANDBY
-    void UpdateLunar(struct tm* tm);
+    void UpdateLunar(struct ::tm* tm);
 #endif
 
     void StartDimTimer();

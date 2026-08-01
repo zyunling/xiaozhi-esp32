@@ -402,7 +402,7 @@ void ClockScreen::SetDimCallback(box2_standby_cb_t cb, void* user_data) {
 void ClockScreen::UpdateTime() {
     time_t now = time(nullptr);
     if (now < 0) return;
-    struct tm* tm = localtime(&now);
+    struct ::tm* tm = localtime(&now);
     if (!tm) return;
 
     char buf[8];
@@ -428,7 +428,7 @@ void ClockScreen::UpdateTime() {
 }
 
 #ifdef CONFIG_USE_LUNAR_STANDBY
-void ClockScreen::UpdateLunar(struct tm* tm) {
+void ClockScreen::UpdateLunar(struct ::tm* tm) {
     if (!lunar_label_) return;
 
     int year  = tm->tm_year + 1900;
