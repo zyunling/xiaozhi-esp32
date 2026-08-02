@@ -14,6 +14,11 @@
 #include <esp_log.h>
 #include <esp_lcd_panel_vendor.h>
 
+#include "mcp_server.h"
+#include "navidrome_api.h"
+#include "music_player.h"
+#include "alarm_manager.h"
+
 #include <driver/rtc_io.h>
 #include <esp_sleep.h>
 #include "esp_io_expander_tca95xx_16bit.h"
@@ -405,6 +410,284 @@ private:
                                     DISPLAY_WIDTH, DISPLAY_HEIGHT, DISPLAY_OFFSET_X, DISPLAY_OFFSET_Y, DISPLAY_MIRROR_X, DISPLAY_MIRROR_Y, DISPLAY_SWAP_XY);
     }
 
+void InitializeTools() {
+        auto& mcp_server = McpServer::GetInstance();
+
+        // ============ Music Control Tools ============
+        mcp_server.AddTool(
+            "music.navidrome.configure",
+            "配置Navidrome音乐服务器连接信息。参数：\n"
+            "  `url`: Navidrome服务器地址，例如 http://192.168.1.100:4533\n"
+            "  `username`: 用户名\n"
+            "  `password`: 密码\n"
+            "返回值：配置状态信息",
+            PropertyList({
+                Property("url", kPropertyTypeString),
+                Property("username", kPropertyTypeString),
+                Property("password", kPropertyTypeString)
+            }),
+            [](const PropertyList& properties) -> ReturnValue {
+                NavidromeApi::Config cfg;
+                cfg.url = properties["url"].value<std::string>();
+                cfg.username = properties["username"].value<std::string>();
+                cfg.password = properties["password"].value<std::string>();
+                NavidromeApi::GetInstance().SaveConfig(cfg);
+                return "{\"success\": true, \"message\": \"Navidrome服务器配置已保存\"}";
+            }
+        );
+
+        mcp_server.AddTool(
+            "music.navidrome.status",
+            "获取Navidrome服务器连接状态。无参数。\n"
+            "返回值：服务器连接状态信息",
+            PropertyList(),
+            [](const PropertyList&) -> ReturnValue {
+                auto& api = NavidromeApi::GetInstance();
+                if (!api.IsConfigured()) {
+                    return "{\"configured\": false, \"message\": \"Navidrome服务器未配置\"}";
+                }
+                bool connected = api.Ping();
+                return connected ?
+                    "{\"configured\": true, \"connected\": true, \"message\": \"Navidrome服务器已连接\"}" :
+                    "{\"configured\": true, \"connected\": false, \"message\": \"Navidrome服务器无法连接\"}";
+            }
+        );
+
+        mcp_server.AddTool(
+            "music.search",
+            "在Navidrome中搜索音乐。参数：\n"
+            "  `query`: 搜索关键词（歌曲名、歌手或专辑名）\n"
+            "返回值：搜索到的歌曲列表",
+            PropertyList({
+                Property("query", kPropertyTypeString)
+            }),
+            [](const PropertyList& properties) -> ReturnValue {
+                auto& api = NavidromeApi::GetInstance();
+                if (!api.IsConfigured()) {
+                    return "{\"error\": \"Navidrome服务器未配置\"}";
+                }
+                auto query = properties["query"].value<std::string>();
+                auto songs = api.Search(query, 10);
+                cJSON* arr = cJSON_CreateArray();
+                for (const auto& song : songs) {
+                    cJSON* item = cJSON_CreateObject();
+                    cJSON_AddStringToObject(item, "id", song.id.c_str());
+                    cJSON_AddStringToObject(item, "title", song.title.c_str());
+                    cJSON_AddStringToObject(item, "artist", song.artist.c_str());
+                    cJSON_AddStringToObject(item, "album", song.album.c_str());
+                    cJSON_AddNumberToObject(item, "duration", song.duration);
+                    cJSON_AddItemToArray(arr, item);
+                }
+                cJSON* result = cJSON_CreateObject();
+                cJSON_AddItemToObject(result, "songs", arr);
+                cJSON_AddNumberToObject(result, "count", songs.size());
+                return result;
+            }
+        );
+
+        mcp_server.AddTool(
+            "music.play",
+            "播放音乐。参数：\n"
+            "  `id`: 歌曲ID（从music.search获取）\n"
+            "返回值：播放状态信息",
+            PropertyList({
+                Property("id", kPropertyTypeString)
+            }),
+            [](const PropertyList& properties) -> ReturnValue {
+                auto& api = NavidromeApi::GetInstance();
+                if (!api.IsConfigured()) {
+                    return "{\"error\": \"Navidrome服务器未配置\"}";
+                }
+                auto song_id = properties["id"].value<std::string>();
+                auto song = api.GetSong(song_id);
+                if (song.id.empty()) {
+                    return "{\"error\": \"未找到该歌曲\"}";
+                }
+                std::string stream_url = api.GetStreamUrl(song_id);
+                auto& player = MusicPlayer::GetInstance();
+                if (!player.Play(stream_url)) {
+                    return "{\"error\": \"播放失败\"}";
+                }
+                cJSON* result = cJSON_CreateObject();
+                cJSON_AddStringToObject(result, "title", song.title.c_str());
+                cJSON_AddStringToObject(result, "artist", song.artist.c_str());
+                cJSON_AddStringToObject(result, "album", song.album.c_str());
+                cJSON_AddBoolToObject(result, "playing", true);
+                return result;
+            }
+        );
+
+        mcp_server.AddTool(
+            "music.stop",
+            "停止播放当前音乐。无参数。\n"
+            "返回值：操作状态信息",
+            PropertyList(),
+            [](const PropertyList&) -> ReturnValue {
+                auto& player = MusicPlayer::GetInstance();
+                player.Stop();
+                return "{\"success\": true, \"message\": \"音乐已停止\"}";
+            }
+        );
+
+        mcp_server.AddTool(
+            "music.pause",
+            "暂停播放当前音乐。无参数。\n"
+            "返回值：操作状态信息",
+            PropertyList(),
+            [](const PropertyList&) -> ReturnValue {
+                auto& player = MusicPlayer::GetInstance();
+                if (!player.IsPlaying()) {
+                    return "{\"error\": \"当前没有正在播放的音乐\"}";
+                }
+                player.Pause();
+                return "{\"success\": true, \"message\": \"音乐已暂停\"}";
+            }
+        );
+
+        mcp_server.AddTool(
+            "music.resume",
+            "继续播放已暂停的音乐。无参数。\n"
+            "返回值：操作状态信息",
+            PropertyList(),
+            [](const PropertyList&) -> ReturnValue {
+                auto& player = MusicPlayer::GetInstance();
+                if (player.GetState() != MusicPlayerState::kPaused) {
+                    return "{\"error\": \"当前没有已暂停的音乐\"}";
+                }
+                player.Resume();
+                return "{\"success\": true, \"message\": \"音乐已继续播放\"}";
+            }
+        );
+
+        mcp_server.AddTool(
+            "music.status",
+            "获取当前音乐播放状态。无参数。\n"
+            "返回值：当前播放状态信息",
+            PropertyList(),
+            [](const PropertyList&) -> ReturnValue {
+                auto& player = MusicPlayer::GetInstance();
+                cJSON* result = cJSON_CreateObject();
+                switch (player.GetState()) {
+                    case MusicPlayerState::kIdle:
+                        cJSON_AddStringToObject(result, "state", "idle");
+                        break;
+                    case MusicPlayerState::kPlaying:
+                        cJSON_AddStringToObject(result, "state", "playing");
+                        break;
+                    case MusicPlayerState::kPaused:
+                        cJSON_AddStringToObject(result, "state", "paused");
+                        break;
+                    case MusicPlayerState::kStopped:
+                        cJSON_AddStringToObject(result, "state", "stopped");
+                        break;
+                }
+                return result;
+            }
+        );
+
+        // ============ Alarm Tools ============
+        mcp_server.AddTool(
+            "alarm.set",
+            "设置闹钟。参数：\n"
+            "  `hour`: 小时（0-23）\n"
+            "  `minute`: 分钟（0-59）\n"
+            "  `repeat`: 重复模式（\"once\"-单次, \"daily\"-每天, \"weekday\"-工作日）\n"
+            "  `label`: 闹钟标签（可选，例如\"起床\"、\"吃药\"）\n"
+            "返回值：设置的闹钟信息",
+            PropertyList({
+                Property("hour", kPropertyTypeInteger, 0, 23),
+                Property("minute", kPropertyTypeInteger, 0, 59),
+                Property("repeat", kPropertyTypeString, std::string("once")),
+                Property("label", kPropertyTypeString, std::string(""))
+            }),
+            [](const PropertyList& properties) -> ReturnValue {
+                Alarm alarm;
+                alarm.hour = static_cast<uint8_t>(properties["hour"].value<int>());
+                alarm.minute = static_cast<uint8_t>(properties["minute"].value<int>());
+                alarm.repeat = properties["repeat"].value<std::string>();
+                alarm.label = properties["label"].value<std::string>();
+                alarm.enabled = true;
+
+                auto& mgr = AlarmManager::GetInstance();
+                mgr.SetAlarm(alarm);
+
+                cJSON* result = cJSON_CreateObject();
+                cJSON_AddNumberToObject(result, "id", alarm.id);
+                cJSON_AddNumberToObject(result, "hour", alarm.hour);
+                cJSON_AddNumberToObject(result, "minute", alarm.minute);
+                cJSON_AddStringToObject(result, "repeat", alarm.repeat.c_str());
+                cJSON_AddStringToObject(result, "label", alarm.label.c_str());
+                cJSON_AddBoolToObject(result, "enabled", alarm.enabled);
+                return result;
+            }
+        );
+
+        mcp_server.AddTool(
+            "alarm.list",
+            "列出所有已设置的闹钟。无参数。\n"
+            "返回值：闹钟列表",
+            PropertyList(),
+            [](const PropertyList&) -> ReturnValue {
+                auto& mgr = AlarmManager::GetInstance();
+                auto alarms = mgr.ListAlarms();
+                cJSON* arr = cJSON_CreateArray();
+                for (const auto& alarm : alarms) {
+                    cJSON* item = cJSON_CreateObject();
+                    cJSON_AddNumberToObject(item, "id", alarm.id);
+                    cJSON_AddNumberToObject(item, "hour", alarm.hour);
+                    cJSON_AddNumberToObject(item, "minute", alarm.minute);
+                    cJSON_AddStringToObject(item, "repeat", alarm.repeat.c_str());
+                    cJSON_AddStringToObject(item, "label", alarm.label.c_str());
+                    cJSON_AddBoolToObject(item, "enabled", alarm.enabled);
+                    cJSON_AddItemToArray(arr, item);
+                }
+                cJSON* result = cJSON_CreateObject();
+                cJSON_AddItemToObject(result, "alarms", arr);
+                cJSON_AddNumberToObject(result, "count", alarms.size());
+                return result;
+            }
+        );
+
+        mcp_server.AddTool(
+            "alarm.delete",
+            "删除指定ID的闹钟。参数：\n"
+            "  `id`: 闹钟ID（从alarm.list获取）\n"
+            "返回值：操作状态信息",
+            PropertyList({
+                Property("id", kPropertyTypeInteger)
+            }),
+            [](const PropertyList& properties) -> ReturnValue {
+                int id = properties["id"].value<int>();
+                auto& mgr = AlarmManager::GetInstance();
+                if (mgr.DeleteAlarm(id)) {
+                    return "{\"success\": true, \"message\": \"闹钟已删除\"}";
+                }
+                return "{\"error\": \"未找到指定ID的闹钟\"}";
+            }
+        );
+
+        mcp_server.AddTool(
+            "alarm.dismiss",
+            "解除所有已触发的闹钟。无参数。\n"
+            "返回值：操作状态信息",
+            PropertyList(),
+            [](const PropertyList&) -> ReturnValue {
+                AlarmManager::GetInstance().Dismiss();
+                return "{\"success\": true, \"message\": \"闹钟已解除\"}";
+            }
+        );
+
+        // Initialize the alarm manager
+        AlarmManager::GetInstance().Initialize();
+        AlarmManager::GetInstance().OnAlarmFired([](const Alarm& alarm) {
+            ESP_LOGI(TAG, "Alarm fired: %s at %02d:%02d",
+                     alarm.label.c_str(), alarm.hour, alarm.minute);
+            // TODO: Play alarm sound or notification via audio system
+        });
+
+        ESP_LOGI(TAG, "MCP tools registered (music + alarm)");
+    }
+
 public:
     atk_dnesp32s3_box2_wifi()  {
         InitializeI2c();
@@ -415,6 +698,7 @@ public:
         InitializeButtons();
         GetBacklight()->RestoreBrightness();
         InitializeBoardPowerManager();
+        InitializeTools();
     }
 
     virtual AudioCodec* GetAudioCodec() override {
