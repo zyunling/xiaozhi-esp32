@@ -22,7 +22,7 @@ static const char* TAG = "Box2ClockScreen";
 
 namespace box2 {
 
-// ── Color palette (matches target dark-theme design) ──
+// ── Color palette (dark-theme matching target design) ──
 static const lv_color_t kBgColor     = lv_color_hex(0x0B1626);
 static const lv_color_t kCardBgColor = lv_color_hex(0x1C2742);
 static const lv_color_t kCardBorder  = lv_color_hex(0x2A3A5C);
@@ -44,7 +44,7 @@ ClockScreen& ClockScreen::GetInstance() {
 }
 
 // ════════════════════════════════════════════════════════════════
-//  Setup — build the entire clock UI tree once (orientation aware)
+//  Setup — build the entire clock UI tree once (portrait 240x320)
 // ════════════════════════════════════════════════════════════════
 void ClockScreen::Setup(lv_obj_t* screen, LcdDisplay* display,
                         int standby_brightness, int dim_delay_sec) {
@@ -54,8 +54,8 @@ void ClockScreen::Setup(lv_obj_t* screen, LcdDisplay* display,
     standby_brightness_ = standby_brightness;
     dim_delay_sec_ = dim_delay_sec;
 
-    int sw = LV_HOR_RES;   // logical width  (320 in landscape, 240 in portrait)
-    int sh = LV_VER_RES;   // logical height (240 in landscape, 320 in portrait)
+    int sw = LV_HOR_RES;   // 240 (portrait ST7789)
+    int sh = LV_VER_RES;   // 320
 
     // ── Root: full-screen overlay ──
     clock_screen_ = lv_obj_create(screen);
@@ -70,33 +70,32 @@ void ClockScreen::Setup(lv_obj_t* screen, LcdDisplay* display,
     lv_obj_add_flag(clock_screen_, LV_OBJ_FLAG_HIDDEN);
     lv_obj_move_foreground(clock_screen_);
 
-    // ── Status bar (top, h=26), flex row SPACE_BETWEEN ──
+    // ── Status bar (top, h=22), flex row SPACE_BETWEEN ──
     lv_obj_t* top_bar = lv_obj_create(clock_screen_);
-    lv_obj_set_size(top_bar, sw, 26);
+    lv_obj_set_size(top_bar, sw, 22);
     lv_obj_align(top_bar, LV_ALIGN_TOP_MID, 0, 0);
     lv_obj_set_style_bg_opa(top_bar, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(top_bar, 0, 0);
-    lv_obj_set_style_pad_left(top_bar, 10, 0);
-    lv_obj_set_style_pad_right(top_bar, 10, 0);
+    lv_obj_set_style_pad_left(top_bar, 8, 0);
+    lv_obj_set_style_pad_right(top_bar, 8, 0);
     lv_obj_set_flex_flow(top_bar, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(top_bar, LV_FLEX_ALIGN_SPACE_BETWEEN,
                           LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
-    // ── Left: WiFi icon — hand-drawn with LVGL arcs (no font dependency) ──
-    // Three concentric top-arcs sharing a bottom-center point + a center dot.
+    // ── Left: WiFi icon — hand-drawn arcs (no font dependency) ──
     wifi_container_ = lv_obj_create(top_bar);
-    lv_obj_set_size(wifi_container_, 24, 18);
+    lv_obj_set_size(wifi_container_, 22, 16);
     lv_obj_set_style_bg_opa(wifi_container_, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(wifi_container_, 0, 0);
     lv_obj_set_style_pad_all(wifi_container_, 0, 0);
 
-    const int cx = 12, cy = 15;
-    const int arc_diams[3] = {10, 16, 22};
+    const int wcx = 11, wcy = 13;
+    const int arc_diams[3] = {9, 14, 19};
     for (int i = 0; i < 3; i++) {
         lv_obj_t* a = lv_arc_create(wifi_container_);
         int d = arc_diams[i];
         lv_obj_set_size(a, d, d);
-        lv_obj_set_pos(a, cx - d / 2, cy - d / 2);
+        lv_obj_set_pos(a, wcx - d / 2, wcy - d / 2);
         lv_arc_set_range(a, 0, 100);
         lv_arc_set_value(a, 100);
         lv_arc_set_bg_angles(a, 225, 315);
@@ -110,14 +109,14 @@ void ClockScreen::Setup(lv_obj_t* screen, LcdDisplay* display,
         lv_obj_clear_flag(a, LV_OBJ_FLAG_CLICKABLE);
     }
     lv_obj_t* dot = lv_obj_create(wifi_container_);
-    lv_obj_set_size(dot, 4, 4);
-    lv_obj_set_style_radius(dot, 2, 0);
+    lv_obj_set_size(dot, 3, 3);
+    lv_obj_set_style_radius(dot, 1, 0);
     lv_obj_set_style_bg_color(dot, kWhite, 0);
     lv_obj_set_style_bg_opa(dot, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(dot, 0, 0);
     lv_obj_align(dot, LV_ALIGN_BOTTOM_MID, 0, -1);
 
-    // ── Right group: volume bar + battery icon + percent ──
+    // ── Right group: battery icon + percent + volume bar ──
     lv_obj_t* right_group = lv_obj_create(top_bar);
     lv_obj_set_size(right_group, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
     lv_obj_set_style_bg_opa(right_group, LV_OPA_TRANSP, 0);
@@ -126,43 +125,43 @@ void ClockScreen::Setup(lv_obj_t* screen, LcdDisplay* display,
     lv_obj_set_flex_flow(right_group, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(right_group, LV_FLEX_ALIGN_END,
                           LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_column(right_group, 8, 0);
+    lv_obj_set_style_pad_column(right_group, 6, 0);
 
     volume_bar_ = lv_bar_create(right_group);
-    lv_obj_set_size(volume_bar_, 38, 6);
+    lv_obj_set_size(volume_bar_, 32, 5);
     lv_bar_set_range(volume_bar_, 0, 100);
     lv_bar_set_value(volume_bar_, 50, LV_ANIM_OFF);
-    lv_obj_set_style_radius(volume_bar_, 3, 0);
+    lv_obj_set_style_radius(volume_bar_, 2, 0);
     lv_obj_set_style_bg_color(volume_bar_, kCardBgColor, 0);
     lv_obj_set_style_bg_opa(volume_bar_, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(volume_bar_, 0, 0);
     lv_obj_set_style_bg_color(volume_bar_, kBlue, LV_PART_INDICATOR);
 
-    // ── Battery icon — hand-drawn (outline + fill + nub), no font dependency ──
+    // Battery icon — hand-drawn outline + fill + nub
     battery_container_ = lv_obj_create(right_group);
-    lv_obj_set_size(battery_container_, 32, 18);
+    lv_obj_set_size(battery_container_, 28, 16);
     lv_obj_set_style_bg_opa(battery_container_, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(battery_container_, 0, 0);
     lv_obj_set_style_pad_all(battery_container_, 0, 0);
 
     lv_obj_t* body = lv_obj_create(battery_container_);
-    lv_obj_set_size(body, 26, 14);
+    lv_obj_set_size(body, 22, 12);
     lv_obj_set_pos(body, 0, 2);
-    lv_obj_set_style_radius(body, 3, 0);
+    lv_obj_set_style_radius(body, 2, 0);
     lv_obj_set_style_bg_opa(body, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_color(body, kCardBorder, 0);
     lv_obj_set_style_border_width(body, 1, 0);
 
     lv_obj_t* nub = lv_obj_create(battery_container_);
-    lv_obj_set_size(nub, 3, 6);
-    lv_obj_set_pos(nub, 26, 6);
+    lv_obj_set_size(nub, 2, 5);
+    lv_obj_set_pos(nub, 22, 5);
     lv_obj_set_style_radius(nub, 1, 0);
     lv_obj_set_style_bg_color(nub, kCardBorder, 0);
     lv_obj_set_style_bg_opa(nub, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(nub, 0, 0);
 
     battery_fill_ = lv_obj_create(battery_container_);
-    lv_obj_set_size(battery_fill_, 22, 10);
+    lv_obj_set_size(battery_fill_, 18, 8);
     lv_obj_set_pos(battery_fill_, 2, 4);
     lv_obj_set_style_radius(battery_fill_, 1, 0);
     lv_obj_set_style_bg_color(battery_fill_, kGreen, 0);
@@ -174,23 +173,28 @@ void ClockScreen::Setup(lv_obj_t* screen, LcdDisplay* display,
     lv_obj_set_style_text_font(battery_pct_, &lv_font_montserrat_12, 0);
     lv_obj_set_style_text_color(battery_pct_, kWhite, 0);
 
-    // ── Time cards: HH : MM [SS] — centered, responsive width ──
-    int card_w = 64, card_h = 84;   // HH / MM card size
-    int ss_w   = 40, ss_h   = 84;   // SS card
-    int gap    = 6;
-    int colon_w = 18;
-    int total_w = card_w + gap + colon_w + gap + card_w + gap + ss_w;  // ~204
-    int time_x = (sw - total_w) / 2;
+    // ═══════════════════════════════════════════════════════════
+    //  TIME DISPLAY — centered in available vertical space
+    //  Portrait 240x320: status bar(22) + margins → ~298px usable
+    //  Layout: [HH][colon][MM] on one line, large digits
+    // ═══════════════════════════════════════════════════════════
+    const int card_w = 72;       // hour/minute card width (fits 44pt digit + padding)
+    const int card_h = 80;       // card height
+    const int colon_w = 16;
+    const int gap = 6;
+    const int time_total_w = card_w + gap + colon_w + gap + card_w;  // 172
+    const int time_x = (sw - time_total_w) / 2;                     // centered
 
-    // vertical placement: center the whole block (time + date + lunar)
-    int content_h = card_h + 14 + 26 + 8;
-    int time_y = 26 + ((sh - 26) - content_h) / 2;
-    if (time_y < 26 + 10) time_y = 26 + 10;
+    // Vertical centering: time block + date(24) + lunar(20) + spacing
+    const int content_h = card_h + 12 + 24 + 10 + 20;
+    const int time_y = 22 + ((sh - 22) - content_h) / 2;
+    const int effective_y = (time_y < 30) ? 30 : time_y;  // minimum top margin after status bar
 
+    // HH card
     card_hh_ = lv_obj_create(clock_screen_);
     lv_obj_set_size(card_hh_, card_w, card_h);
-    lv_obj_set_pos(card_hh_, time_x, time_y);
-    lv_obj_set_style_radius(card_hh_, 14, 0);
+    lv_obj_set_pos(card_hh_, time_x, effective_y);
+    lv_obj_set_style_radius(card_hh_, 12, 0);
     lv_obj_set_style_bg_color(card_hh_, kCardBgColor, 0);
     lv_obj_set_style_bg_opa(card_hh_, LV_OPA_COVER, 0);
     lv_obj_set_style_border_color(card_hh_, kCardBorder, 0);
@@ -205,17 +209,19 @@ void ClockScreen::Setup(lv_obj_t* screen, LcdDisplay* display,
     lv_obj_set_style_text_color(hh_label_, kWhite, 0);
     lv_obj_align(hh_label_, LV_ALIGN_CENTER, 0, 0);
 
+    // Colon
     colon_label_ = lv_label_create(clock_screen_);
     lv_label_set_text(colon_label_, ":");
     lv_obj_set_style_text_font(colon_label_, &lv_font_montserrat_28, 0);
     lv_obj_set_style_text_color(colon_label_, kWhite, 0);
     lv_obj_set_style_text_opa(colon_label_, LV_OPA_60, 0);
-    lv_obj_set_pos(colon_label_, time_x + card_w + gap, time_y + card_h / 2 - 14);
+    lv_obj_set_pos(colon_label_, time_x + card_w + gap, effective_y + card_h / 2 - 14);
 
+    // MM card
     card_mm_ = lv_obj_create(clock_screen_);
     lv_obj_set_size(card_mm_, card_w, card_h);
-    lv_obj_set_pos(card_mm_, time_x + card_w + gap * 2 + colon_w, time_y);
-    lv_obj_set_style_radius(card_mm_, 14, 0);
+    lv_obj_set_pos(card_mm_, time_x + card_w + gap * 2 + colon_w, effective_y);
+    lv_obj_set_style_radius(card_mm_, 12, 0);
     lv_obj_set_style_bg_color(card_mm_, kCardBgColor, 0);
     lv_obj_set_style_bg_opa(card_mm_, LV_OPA_COVER, 0);
     lv_obj_set_style_border_color(card_mm_, kCardBorder, 0);
@@ -230,26 +236,17 @@ void ClockScreen::Setup(lv_obj_t* screen, LcdDisplay* display,
     lv_obj_set_style_text_color(mm_label_, kOrange, 0);
     lv_obj_align(mm_label_, LV_ALIGN_CENTER, 0, 0);
 
-    card_ss_ = lv_obj_create(clock_screen_);
-    lv_obj_set_size(card_ss_, ss_w, ss_h);
-    lv_obj_set_pos(card_ss_, time_x + card_w * 2 + gap * 3 + colon_w, time_y);
-    lv_obj_set_style_radius(card_ss_, 14, 0);
-    lv_obj_set_style_bg_color(card_ss_, kCardBgColor, 0);
-    lv_obj_set_style_bg_opa(card_ss_, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_color(card_ss_, kCardBorder, 0);
-    lv_obj_set_style_border_width(card_ss_, 1, 0);
-    lv_obj_set_style_shadow_width(card_ss_, 6, 0);
-    lv_obj_set_style_shadow_color(card_ss_, lv_color_hex(0x000000), 0);
-    lv_obj_set_style_shadow_opa(card_ss_, LV_OPA_30, 0);
-    lv_obj_set_style_pad_all(card_ss_, 0, 0);
-    ss_label_ = lv_label_create(card_ss_);
+    // SS label (small, below MM card right edge — no card background to save space)
+    ss_label_ = lv_label_create(clock_screen_);
     lv_label_set_text(ss_label_, "31");
-    lv_obj_set_style_text_font(ss_label_, &lv_font_montserrat_28, 0);
+    lv_obj_set_style_text_font(ss_label_, &lv_font_montserrat_16, 0);
     lv_obj_set_style_text_color(ss_label_, kBlue, 0);
-    lv_obj_align(ss_label_, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_pos(ss_label_,
+                   time_x + card_w * 2 + gap * 2 + colon_w + card_w - 18,
+                   effective_y + card_h - 18);
 
-    // ── Date + Weekday row (centered) ──
-    int date_y = time_y + card_h + 14;
+    // ── Date + Weekday row ──
+    const int date_y = effective_y + card_h + 12;
     date_row_ = lv_obj_create(clock_screen_);
     lv_obj_set_style_bg_opa(date_row_, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(date_row_, 0, 0);
@@ -257,33 +254,33 @@ void ClockScreen::Setup(lv_obj_t* screen, LcdDisplay* display,
     lv_obj_set_flex_flow(date_row_, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(date_row_, LV_FLEX_ALIGN_CENTER,
                           LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_column(date_row_, 10, 0);
+    lv_obj_set_style_pad_column(date_row_, 8, 0);
     lv_obj_set_width(date_row_, LV_SIZE_CONTENT);
     lv_obj_set_height(date_row_, LV_SIZE_CONTENT);
     lv_obj_align(date_row_, LV_ALIGN_TOP_MID, 0, date_y);
 
     date_label_ = lv_label_create(date_row_);
-    lv_label_set_text(date_label_, "2026/07/29");
+    lv_label_set_text(date_label_, "2026/08/02");
     lv_obj_set_style_text_font(date_label_, &lv_font_montserrat_16, 0);
     lv_obj_set_style_text_color(date_label_, kWhite, 0);
 
     weekday_tag_ = lv_obj_create(date_row_);
-    lv_obj_set_size(weekday_tag_, LV_SIZE_CONTENT, 24);
-    lv_obj_set_style_radius(weekday_tag_, 6, 0);
+    lv_obj_set_size(weekday_tag_, LV_SIZE_CONTENT, 20);
+    lv_obj_set_style_radius(weekday_tag_, 5, 0);
     lv_obj_set_style_bg_color(weekday_tag_, kBlue, 0);
     lv_obj_set_style_bg_opa(weekday_tag_, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(weekday_tag_, 0, 0);
-    lv_obj_set_style_pad_left(weekday_tag_, 8, 0);
-    lv_obj_set_style_pad_right(weekday_tag_, 8, 0);
+    lv_obj_set_style_pad_left(weekday_tag_, 6, 0);
+    lv_obj_set_style_pad_right(weekday_tag_, 6, 0);
     weekday_label_ = lv_label_create(weekday_tag_);
-    lv_label_set_text(weekday_label_, "周三");
-    lv_obj_set_style_text_font(weekday_label_, &lv_font_montserrat_14, 0);
+    lv_label_set_text(weekday_label_, "周六");
+    lv_obj_set_style_text_font(weekday_label_, &lv_font_montserrat_12, 0);
     lv_obj_set_style_text_color(weekday_label_, kWhite, 0);
     lv_obj_align(weekday_label_, LV_ALIGN_CENTER, 0, 0);
 
-    // ── Lunar calendar row (optional, centered) ──
+    // ── Lunar calendar row (optional) ──
 #ifdef CONFIG_USE_LUNAR_STANDBY
-    int lunar_y = date_y + 30;
+    const int lunar_y = date_y + 26;
     lunar_row_ = lv_obj_create(clock_screen_);
     lv_obj_set_style_bg_opa(lunar_row_, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(lunar_row_, 0, 0);
@@ -291,13 +288,13 @@ void ClockScreen::Setup(lv_obj_t* screen, LcdDisplay* display,
     lv_obj_set_flex_flow(lunar_row_, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(lunar_row_, LV_FLEX_ALIGN_CENTER,
                           LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_column(lunar_row_, 6, 0);
+    lv_obj_set_style_pad_column(lunar_row_, 4, 0);
     lv_obj_set_width(lunar_row_, LV_SIZE_CONTENT);
     lv_obj_set_height(lunar_row_, LV_SIZE_CONTENT);
     lv_obj_align(lunar_row_, LV_ALIGN_TOP_MID, 0, lunar_y);
 
     lunar_label_ = lv_label_create(lunar_row_);
-    lv_label_set_text(lunar_label_, "农历：戊申年十月初九");
+    lv_label_set_text(lunar_label_, "农历：戊申年闰六月初九");
     lv_obj_set_style_text_font(lunar_label_, &lv_font_montserrat_12, 0);
     lv_obj_set_style_text_color(lunar_label_, kDimText, 0);
 #else
@@ -314,7 +311,7 @@ void ClockScreen::Setup(lv_obj_t* screen, LcdDisplay* display,
     esp_timer_create(&timer_args, &dim_timer_);
 
     initialized_ = true;
-    ESP_LOGI(TAG, "Clock screen OK  (%dx%d, bright=%d, dim=%ds, lunar=%d)",
+    ESP_LOGI(TAG, "Clock screen OK (%dx%d, bright=%d, dim=%ds, lunar=%d)",
              sw, sh, standby_brightness_, dim_delay_sec_,
 #ifdef CONFIG_USE_LUNAR_STANDBY
              1);
@@ -364,9 +361,9 @@ void ClockScreen::SetBattery(int level, int charging) {
     snprintf(pct, sizeof(pct), "%d%%", level);
     lv_label_set_text(battery_pct_, pct);
 
-    // Resize the hand-drawn fill (body interior is ~22px wide).
-    int w = 2 + (level * 20) / 100;   // 2..22
-    if (w > 22) w = 22;
+    // Resize fill rect (body interior is ~18px wide).
+    int w = 2 + (level * 16) / 100;   // 2..18
+    if (w > 18) w = 18;
     if (w < 2)  w = 2;
     lv_obj_set_width(battery_fill_, w);
 
@@ -377,9 +374,7 @@ void ClockScreen::SetBattery(int level, int charging) {
 }
 
 void ClockScreen::SetWifiIcon(const char* icon) {
-    // The clock screen draws its own WiFi glyph with LVGL arcs, so we only
-    // toggle visibility/opacity here. When the board reports no connection
-    // (nullptr / empty), dim the icon; otherwise show it at full opacity.
+    // Hand-drawn WiFi arcs — only toggle opacity based on connected state.
     if (!initialized_ || !wifi_container_) return;
     bool connected = (icon != nullptr && icon[0] != '\0');
     lv_obj_set_style_opa(wifi_container_, connected ? LV_OPA_COVER : LV_OPA_40, 0);

@@ -56,17 +56,16 @@ enum PowerSupply {
 #define LCD_PIN_D6 GPIO_NUM_4
 #define LCD_PIN_D7 GPIO_NUM_3
 
-#define DISPLAY_WIDTH 320
-#define DISPLAY_HEIGHT 240
+#define DISPLAY_WIDTH 240
+#define DISPLAY_HEIGHT 320
 #define DISPLAY_MIRROR_X false
 #define DISPLAY_MIRROR_Y false
-// Landscape by default on BOX2 (desk use, plugged into power).
-// Disable CONFIG_BOX2_LANDSCAPE in menuconfig to keep portrait.
-#if defined(CONFIG_BOX2_LANDSCAPE)
-#define DISPLAY_SWAP_XY false
-#else
+// BOX2 WiFi uses ST7789 via 8080 parallel bus (physical 240x320).
+// Must keep WIDTH/HEIGHT consistent with SWAP_XY:
+//   SWAP_XY=true  -> WIDTH=320,HEIGHT=240 (ST7789 swaps axes internally)
+//   SWAP_XY=false -> WIDTH=240,HEIGHT=320 (native, matches 4G variant)
+// Default: portrait 240x320 (proven working on BOX2 hardware).
 #define DISPLAY_SWAP_XY true
-#endif
 
 #define DISPLAY_OFFSET_X 0
 #define DISPLAY_OFFSET_Y 0
